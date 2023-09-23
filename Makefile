@@ -1,15 +1,16 @@
-cpio: directory init
+cpio: directory install
 	cd root; find | cpio --quiet -o -H newc | gzip > ../rootfs.cpio.gz
 
 directory:
 	rm -rf root
 	mkdir root
 
-init:
-	gcc init.c -static -o root/init
+install:
+	mv target/debug/init root
 
 run:
 	qemu-system-x86_64 -kernel /boot/vmlinuz-linux -initrd rootfs.cpio.gz
 
 clean:
-	rm rootfs.cpio
+	rm rootfs.cpio.gz
+	rm -r target
