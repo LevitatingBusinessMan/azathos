@@ -10,7 +10,7 @@ install:
 	mv target/debug/init rootfs
 
 run:
-	qemu-system-x86_64 -kernel /boot/vmlinuz-linux -append "console=ttyS0" -initrd rootfs.cpio.gz -nographic
+	qemu-system-x86_64 -kernel /boot/vmlinuz-linux -append "console=ttyS0" -initrd rootfs.cpio.gz -nographic -m 256
 
 clean:
 	rm rootfs.cpio.gz
