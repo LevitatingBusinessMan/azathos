@@ -1,0 +1,6 @@
+# Shell to start
+shell = "sh"
+
+mounts = [
+	{src = "proc", dst = "/proc", type = "proc", flags = ""}
+]
