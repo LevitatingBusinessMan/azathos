@@ -1,3 +1,0 @@
-#!/bin/sh
-exec sh
-#exec llama2c /lib/llama/stories15M.bin -m chat -z /lib/llama/tokenizer.bin

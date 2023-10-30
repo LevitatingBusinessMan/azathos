@@ -1,6 +1,7 @@
 # Shell to start
-shell = "sh"
+shell = "schelp"
 
+# Flags are currently ignored
 mounts = [
 	{src = "proc", dst = "/proc", type = "proc", flags = ""}
 ]

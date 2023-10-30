@@ -2,7 +2,9 @@ cpio: install
 	cd rootfs; find | cpio --quiet -o -H newc | gzip -1 > ../rootfs.cpio.gz
 
 install: build directory
-	cp target/x86_64-unknown-linux-musl/debug/init rootfs
+	install target/x86_64-unknown-linux-musl/debug/init rootfs
+	install target/x86_64-unknown-linux-musl/debug/schelp rootfs/bin
+	ln -rs rootfs/bin/schelp rootfs/bin/sh
 
 # Make a copy of the root/
 directory:

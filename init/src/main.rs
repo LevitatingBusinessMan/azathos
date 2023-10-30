@@ -1,7 +1,6 @@
 #![feature(panic_backtrace_config)]
 use std::{os::unix::process::CommandExt, ffi::CString};
 use anyhow::*;
-use libc::c_char;
 use serde::Deserialize;
 
 static CONFIG_FILE: &'static str = "/etc/init.toml";
