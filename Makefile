@@ -9,8 +9,7 @@ install: build directory
 # Make a copy of the root/
 directory:
 	rm -rf rootfs
-	mkdir rootfs
-	cp -r root/* rootfs
+	cp -r root rootfs
 
 build:
 	cargo build

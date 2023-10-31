@@ -3,6 +3,8 @@ use clap::Parser;
 use std::{io::{self, Write}, process::ExitStatus};
 use color::{green,red};
 
+static RC_FILENAME: &'static str = ".schelprc";
+
 #[derive(Parser)]
 struct Args {
     #[arg(short, default_value="$")]
@@ -15,11 +17,20 @@ fn main() {
     let args = Args::parse();
     let stdin: io::Stdin = io::stdin();
     let mut status: Option<ExitStatus> = None;
+    read_rc();
     loop {
         prompt(&status, &args);
         let mut line = String::new();
         stdin.read_line(&mut line).unwrap();
         status = execute(line.trim());
+    }
+}
+
+fn read_rc() {
+    if let Ok(schelprc) = std::fs::read_to_string(std::env::home_dir().unwrap().join(".schelprc")) {
+        for line in schelprc.lines() {
+            execute(&line);
+        }
     }
 }
 
