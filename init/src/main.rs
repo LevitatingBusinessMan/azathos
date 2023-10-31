@@ -2,6 +2,7 @@
 use std::{os::unix::process::CommandExt, ffi::CString};
 use anyhow::*;
 use serde::Deserialize;
+use color::green;
 
 static CONFIG_FILE: &'static str = "/etc/init.toml";
 
@@ -35,7 +36,7 @@ macro_rules! log {
     ($msg:expr, $expr:expr) => {{
         print!("{}... ", $msg);
         let result = $expr;
-        println!("done");
+        println!("{}", green!("done"));
         result
     }};
 }

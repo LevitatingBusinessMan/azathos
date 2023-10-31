@@ -139,6 +139,7 @@ name = "init"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "color",
  "libc",
  "serde",
  "toml",

@@ -41,9 +41,7 @@ fn execute(args: &str) -> Option<ExitStatus> {
     let command = args.next()?;
 
     let mut cmd = std::process::Command::new(command);
-    if let Some(args) = args.remainder() {
-        cmd.arg(args);
-    }
+    cmd.args(args.collect::<Vec<_>>());
 
     match cmd.status() {
         Ok(status) => return Some(status),
