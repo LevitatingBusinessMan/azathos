@@ -3,5 +3,6 @@ shell = "schelp"
 
 # Flags are currently ignored
 mounts = [
-	{src = "proc", dst = "/proc", type = "proc", flags = ""}
+	{src = "proc", dst = "/proc", type = "proc", flags = ""},
+	{src = "tmp", dst = "/tmp", type = "tmpfs", flags = ""},
 ]

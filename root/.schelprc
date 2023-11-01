@@ -1,0 +1,3 @@
+# Place your schelp configuration here
+alias ls ls -F --color=always
+alias ll ls -F --color=always -la

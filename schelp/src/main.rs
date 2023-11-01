@@ -1,9 +1,17 @@
 #![feature(str_split_whitespace_remainder)]
+#![feature(lazy_cell)]
 use clap::Parser;
-use std::{io::{self, Write}, process::ExitStatus};
+use std::cell::LazyCell;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::process::ExitStatus;
+use std::io::{self, Write, Read};
+use std::sync::{LazyLock, Mutex};
 use color::{green,red};
 
 static RC_FILENAME: &'static str = ".schelprc";
+
+static ALIASES: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Parser)]
 struct Args {
@@ -11,54 +19,207 @@ struct Args {
     user_prompt: String,
     #[arg(short, default_value="#")]
     root_prompt: String,
+    #[arg()]
+    file: Option<String>,
 }
 
 fn main() {
     let args = Args::parse();
-    let stdin: io::Stdin = io::stdin();
-    let mut status: Option<ExitStatus> = None;
+    let stdin = io::stdin();
+    let mut status: Option<(bool, Option<i32>)> = None;
     read_rc();
+
+    let mut file = args.file.clone().map(|f| {
+        let mut f = std::fs::File::open(f).expect("Could not open file");
+        let mut buf = String::new();
+        f.read_to_string(&mut buf).expect("Failed to read file");
+        buf
+    });
+
+    let mut file_lines = file.as_mut().map(|f| f.lines());
+
     loop {
-        prompt(&status, &args);
-        let mut line = String::new();
-        stdin.read_line(&mut line).unwrap();
-        status = execute(line.trim());
+        let mut line: String = String::new();
+        match &mut file_lines {
+            Some(f) => {
+                match f.next() {
+                    Some(l) => line = l.to_string(),
+                    None => break,
+                }
+            },
+            None => {
+                prompt(&status, &args);
+                stdin.read_line(&mut line).unwrap();
+            },
+        }
+        if let Some((cmd, args)) = parse(line.trim()) {
+            status = execute(cmd, args);
+        }
     }
 }
 
 fn read_rc() {
     if let Ok(schelprc) = std::fs::read_to_string(std::env::home_dir().unwrap().join(".schelprc")) {
         for line in schelprc.lines() {
-            execute(&line);
+            if let Some((cmd, args)) = parse(line.trim()) {
+                execute(cmd, args);
+            }
         }
     }
 }
 
-fn prompt(status: &Option<ExitStatus>, args: &Args) {
+fn prompt(status: &Option<(bool, Option<i32>)>, args: &Args) {
     let uid = unsafe { libc::getuid() };
     let mut prompt = if uid == 0 { args.root_prompt.clone() } else { args.user_prompt.clone() };
     if let Some(status) = status {
-        match status.success() {
+        match status.0 {
             true => prompt = green!(prompt),
             false => prompt = red!(prompt),
         }
     }
-    print!("{prompt} ");
+    let cwd = if std::env::current_dir().unwrap() == std::env::home_dir().unwrap() {
+        "".to_owned()
+    } else {
+        (std::env::current_dir().unwrap().to_string_lossy().to_owned() + " ").to_string()
+    };
+
+    print!("{cwd}{prompt} ");
     io::stdout().flush().unwrap();
 }
 
-fn execute(args: &str) -> Option<ExitStatus> {
-    let mut args = args.split_whitespace();
-    let command = args.next()?;
+fn parse(line: &str) -> Option<(String, Vec<String>)> {
+    let mut line = line.to_owned();
+    if line.starts_with('#') || line.is_empty() {
+        return None
+    }
+    let mut args = vec![];
+    let mut current_arg = String::new();
+    let mut is_string = false;
+    line.push(' ');
 
-    let mut cmd = std::process::Command::new(command);
-    cmd.args(args.collect::<Vec<_>>());
+    // check for aliases to expand
+    for (alias, expansion) in ALIASES.lock().unwrap().iter() {
+        if line.starts_with(alias) {
+            line = line.replacen(alias, &expansion, 1);
+            break
+        }
+    }
 
-    match cmd.status() {
-        Ok(status) => return Some(status),
+    for c in line.chars() {
+        match c {
+            '"' => {
+                is_string = !is_string
+            },
+            ' ' => {
+                if is_string {
+                    current_arg.push(c)
+                } else if !current_arg.is_empty() {
+                    // handle variables
+                    if current_arg.starts_with('$') {
+                        if let Ok(val) = std::env::var(&current_arg[1..]) {
+                            current_arg = val
+                        } else {
+                            println!("Variable {} not found", current_arg);
+                            return None
+                        }
+                    }
+                    args.push(current_arg);
+                    current_arg = String::new();
+                }
+            }
+            _ => current_arg.push(c)
+        }
+    }
+
+    if is_string {
+        println!("Syntax Error: Un-terminated string");
+        return None;
+    }
+
+    if args.is_empty() {
+        return None
+    }
+
+    let cmd = args.remove(0);
+
+    return Some((cmd, args))
+}
+
+// either set or unset the status variable
+fn save_status(code: Option<i32>) {
+    match code {
+        Some(code) => std::env::set_var("status", code.to_string()),
+        None => std::env::remove_var("status")
+    }
+}
+
+/// Returns None if nothing was executed
+fn execute(cmd: String, args: Vec<String>) -> Option<(bool, Option<i32>)> {
+    // possibly execute as build_in
+    if let Some((suc, code)) = build_in(&cmd, &args) {
+        save_status(code);
+        return Some((suc, code))
+    }
+
+    let mut command = std::process::Command::new(&cmd);
+    let command = command.args(args);
+
+    match command.status() {
+        Ok(status) => {
+            save_status(status.code());
+            return Some((status.success(), status.code()))
+        },
         Err(e) => {
-            println!("{e}");
+            save_status(None);
+            println!("{cmd}: {e}");
             None
         },
+    }
+}
+
+fn build_in(cmd: &str, args: &[String]) -> Option<(bool, Option<i32>)> {
+    match cmd {
+        "clear" => {
+            // https://en.wikipedia.org/wiki/ANSI_escape_code#CSI_(Control_Sequence_Introducer)_sequences
+            print!("\x1b[2J"); //clear
+            print!("\x1b[0;0H"); //cursor
+            Some((true, Some(0)))
+        },
+        "=" => {
+            if args.len() < 2{
+                println!("Invalid use of =");
+                return Some((false, Some(1)))
+            } else {
+                std::env::set_var(&args[0], (&args[1..]).join(" ").to_string());
+                Some((true, Some(0)))
+            }
+        },
+        "alias" => {
+            if args.len() < 2{
+                println!("Invalid use of alias");
+                return Some((false, Some(1)))
+            } else {
+                ALIASES.lock().unwrap().insert(args[0].to_owned(), (&args[1..]).join(" ").to_string());
+                Some((true, Some(0)))
+            }
+        },
+        "cd" => {
+            if args.is_empty() {
+                println!("Invalid use of cd");
+                return Some((false, Some(1)))
+            } else {
+                match std::env::set_current_dir(&args[0]) {
+                    Ok(_) => Some((true, Some(0))),
+                    Err(e) => {
+                        println!("cd: {e}");
+                        return Some((false, Some(e.kind() as i32)))
+                    },
+                }
+            }
+        },
+        "exit" => {
+            std::process::exit(0);
+        }
+        _ => None,
     }
 }
