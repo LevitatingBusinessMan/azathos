@@ -5,4 +5,6 @@ shell = "schelp"
 mounts = [
 	{src = "proc", dst = "/proc", type = "proc", flags = ""},
 	{src = "tmp", dst = "/tmp", type = "tmpfs", flags = ""},
+	{src = "dev", dst = "/dev", type = "devtmpfs", flags = ""},
+	{src = "sys", dst = "/sys", type = "sysfs", flags = ""},
 ]

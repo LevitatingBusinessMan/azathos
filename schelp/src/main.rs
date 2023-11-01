@@ -1,10 +1,7 @@
 #![feature(str_split_whitespace_remainder)]
 #![feature(lazy_cell)]
 use clap::Parser;
-use std::cell::LazyCell;
 use std::collections::HashMap;
-use std::hash::Hash;
-use std::process::ExitStatus;
 use std::io::{self, Write, Read};
 use std::sync::{LazyLock, Mutex};
 use color::{green,red};
@@ -59,7 +56,7 @@ fn main() {
 }
 
 fn read_rc() {
-    if let Ok(schelprc) = std::fs::read_to_string(std::env::home_dir().unwrap().join(".schelprc")) {
+    if let Ok(schelprc) = std::fs::read_to_string(std::env::home_dir().unwrap().join(RC_FILENAME)) {
         for line in schelprc.lines() {
             if let Some((cmd, args)) = parse(line.trim()) {
                 execute(cmd, args);
@@ -95,11 +92,12 @@ fn parse(line: &str) -> Option<(String, Vec<String>)> {
     let mut args = vec![];
     let mut current_arg = String::new();
     let mut is_string = false;
+
     line.push(' ');
 
     // check for aliases to expand
     for (alias, expansion) in ALIASES.lock().unwrap().iter() {
-        if line.starts_with(alias) {
+        if line.starts_with(&(alias.to_owned() + " ")) {
             line = line.replacen(alias, &expansion, 1);
             break
         }
