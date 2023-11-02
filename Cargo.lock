@@ -279,6 +279,7 @@ dependencies = [
  "chrono",
  "clap",
  "color",
+ "libc",
 ]
 
 [[package]]

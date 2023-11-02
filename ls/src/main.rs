@@ -1,9 +1,11 @@
 use clap::Parser;
+use std::os::linux::fs::MetadataExt;
 use std::os::unix::prelude::{PermissionsExt, FileTypeExt};
 use std::path::{Path, PathBuf};
 use std::fs::{self, DirEntry, ReadDir};
 use color::*;
-use chrono::{self, Utc, DateTime};
+use chrono::{self, Utc, DateTime, format};
+use libc::{major, minor};
 
 #[derive(Parser)]
 struct Args {
@@ -119,6 +121,12 @@ fn print_entry(entry: &DirEntry, args: &Args, max_size: usize) {
     } else if type_.is_block_device() || type_.is_char_device() {
         if args.color {
             buf = yellow!(buf);
+        }
+        if args.classify {
+            let dev = metadata.st_rdev();
+            unsafe {
+                buf += &format!("({},{})", major(dev), minor(dev));
+            }
         }
     }  else if metadata.permissions().mode() & 0o111 > 0 {
         if args.color {
