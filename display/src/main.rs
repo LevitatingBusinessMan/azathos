@@ -2,7 +2,7 @@
 use clap::Parser;
 use libc::{open, ioctl, mmap, PROT_WRITE, MAP_SHARED, munmap, c_void, close, syncfs, socket, AF_UNIX, SOCK_STREAM, bind, sockaddr};
 use fb;
-use std::{io, ffi::CString, mem::{MaybeUninit, size_of}, ptr::{null, null_mut, self, addr_of, write_volatile}, process::exit, time::Duration, thread, env, fs, path::Path};
+use std::{io, ffi::CString, mem::{MaybeUninit, size_of}, ptr::{null, null_mut, self, addr_of, write_volatile}, process::exit, time::Duration, thread, env, fs, path::Path, os::fd::{AsFd, IntoRawFd, AsRawFd}};
 
 mod window;
 use window::Window;
@@ -40,13 +40,13 @@ const MAP_FAILED: i32 = -1;
 fn main() {
     let args = Args::parse();
     unsafe {
-        let fbfd = open(c!("/dev/fb0") as *const i8, libc::O_RDWR);
-        if fbfd == -1 {
-            println!("Error opening framebuffer: {}", io::Error::last_os_error());
+        let fb = fs::OpenOptions::new().read(true).write(true).open("/dev/fb0").unwrap_or_else(|e| {
+            println!("Error opening framebuffer: {}", e);
             exit(1);
-        }
+        });
+
         let v_info: MaybeUninit<fb::var_screeninfo> = MaybeUninit::uninit();
-        if ioctl(fbfd, fb::IO_GET_VSCREENINFO, &v_info) == -1 {
+        if ioctl(fb.as_raw_fd(), fb::IO_GET_VSCREENINFO, &v_info) == -1 {
             println!("Failed to get variable screen info: {}", io::Error::last_os_error());
             exit(1);
         }
@@ -66,7 +66,7 @@ fn main() {
             size,
             PROT_WRITE,
             MAP_SHARED,
-            fbfd,
+            fb.as_raw_fd(),
             0,     
         ) as *mut Pixel;
         if framebuffer_addr as i32 == MAP_FAILED {
@@ -87,9 +87,6 @@ fn main() {
 
         if munmap(framebuffer_addr as *mut c_void, size) == -1 {
             println!("Failed to close framebuffer map: {}", io::Error::last_os_error());
-        };
-        if close(fbfd) == -1 {
-            println!("Failed to close framebuffer fd: {}", io::Error::last_os_error());
         };
     }
 }
