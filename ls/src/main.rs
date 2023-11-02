@@ -3,6 +3,7 @@ use std::os::unix::prelude::{PermissionsExt, FileTypeExt};
 use std::path::{Path, PathBuf};
 use std::fs::{self, DirEntry, ReadDir};
 use color::*;
+use chrono::{self, Utc, DateTime};
 
 #[derive(Parser)]
 struct Args {
@@ -27,6 +28,10 @@ struct Args {
     /// Display permissions
     #[arg(short, long)]
     permissions: bool,
+
+    /// Display timestamp
+    #[arg(short, long)]
+    time: bool,
 }
 
 fn main() {
@@ -145,6 +150,9 @@ fn print_entry(entry: &DirEntry, args: &Args, max_size: usize) {
             }
             if args.size {
                 print!("{:<max_size$} ", metadata.len());
+            }
+            if args.time {
+                print!("{} ", Into::<DateTime<Utc>>::into(metadata.modified().unwrap()).format("%Y-%m-%d %H:%M"));
             }
             println!("{}", buf);
         }
