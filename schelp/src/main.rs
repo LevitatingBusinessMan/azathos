@@ -74,12 +74,7 @@ fn prompt(status: &Option<(bool, Option<i32>)>, args: &Args) {
             false => prompt = red!(prompt),
         }
     }
-    let cwd = if std::env::current_dir().unwrap() == std::env::home_dir().unwrap() {
-        "".to_owned()
-    } else {
-        (std::env::current_dir().unwrap().to_string_lossy().to_owned() + " ").to_string()
-    };
-
+    let cwd = (std::env::current_dir().unwrap().to_string_lossy().to_owned() + " ").to_string();
     print!("{cwd}{prompt} ");
     io::stdout().flush().unwrap();
 }
@@ -202,17 +197,17 @@ fn build_in(cmd: &str, args: &[String]) -> Option<(bool, Option<i32>)> {
             }
         },
         "cd" => {
-            if args.is_empty() {
-                println!("Invalid use of cd");
-                return Some((false, Some(1)))
+            let target = if args.is_empty() {
+                std::env::var("HOME").unwrap()
             } else {
-                match std::env::set_current_dir(&args[0]) {
-                    Ok(_) => Some((true, Some(0))),
-                    Err(e) => {
-                        println!("cd: {e}");
-                        return Some((false, Some(e.kind() as i32)))
-                    },
-                }
+                args[0].clone()
+            };
+            match std::env::set_current_dir(target) {
+                Ok(_) => Some((true, Some(0))),
+                Err(e) => {
+                    println!("cd: {e}");
+                    return Some((false, Some(e.kind() as i32)))
+                },
             }
         },
         "exit" => {

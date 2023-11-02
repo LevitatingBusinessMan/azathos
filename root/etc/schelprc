@@ -1,0 +1,3 @@
+# Place your schelp configuration here
+alias ls ls -c -f
+alias ll ls -c -f -l -p

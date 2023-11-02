@@ -1,6 +1,3 @@
-# Shell to start
-shell = "schelp"
-
 # Flags are currently ignored
 mounts = [
 	{src = "proc", dst = "/proc", type = "proc", flags = ""},
@@ -8,3 +5,10 @@ mounts = [
 	{src = "dev", dst = "/dev", type = "devtmpfs", flags = ""},
 	{src = "sys", dst = "/sys", type = "sysfs", flags = ""},
 ]
+
+# Login information
+[login]
+shell = "schelp"
+home = "/home"
+user = "root"
+cwd = "/"

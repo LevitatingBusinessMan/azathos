@@ -1,5 +1,5 @@
 #![feature(panic_backtrace_config)]
-use std::{os::unix::process::CommandExt, ffi::CString};
+use std::{os::unix::{process::CommandExt, prelude::MetadataExt}, ffi::CString};
 use anyhow::*;
 use serde::Deserialize;
 use color::green;
@@ -8,8 +8,16 @@ static CONFIG_FILE: &'static str = "/etc/init.toml";
 
 #[derive(Deserialize)]
 struct Config {
-    shell: String,
+    login: Login,
     mounts: Vec<Mount>,
+}
+
+#[derive(Deserialize)]
+struct Login {
+    shell: String,
+    user: String,
+    home: String,
+    cwd: String,
 }
 
 #[derive(Deserialize)]
@@ -62,7 +70,12 @@ fn init() -> Result<()> {
     mounts(config.mounts)?;
 
     println!("Forking off a shell. Stay safe!");
-    std::process::Command::new(config.shell).spawn()?;
+    std::process::Command::new(&config.login.shell)
+        .env("HOME", &config.login.home)
+        .env("USER", &config.login.user)
+        .env("SHELL", &config.login.shell)
+        .current_dir(&config.login.cwd)
+        .spawn()?;
     Ok(())
 }
 

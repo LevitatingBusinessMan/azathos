@@ -5,6 +5,8 @@ cpio: install
 install: build directory
 	install target/x86_64-unknown-linux-musl/debug/init rootfs
 	install target/x86_64-unknown-linux-musl/debug/schelp rootfs/bin
+	install target/x86_64-unknown-linux-musl/debug/id rootfs/bin
+	install target/x86_64-unknown-linux-musl/debug/ls rootfs/bin
 	ln -rs rootfs/bin/schelp rootfs/bin/sh
 
 # Make a copy of the root/
