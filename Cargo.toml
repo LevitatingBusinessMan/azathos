@@ -9,4 +9,5 @@ members = [
     "ls",
     "display",
     "fb",
+    "input",
 ]

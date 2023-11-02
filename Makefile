@@ -8,6 +8,7 @@ install: build directory
 	install target/x86_64-unknown-linux-musl/debug/id rootfs/bin
 	install target/x86_64-unknown-linux-musl/debug/ls rootfs/bin
 	install target/x86_64-unknown-linux-musl/debug/display rootfs/bin
+	install target/x86_64-unknown-linux-musl/debug/input rootfs/bin
 	ln -rs rootfs/bin/schelp rootfs/bin/sh
 
 # Make a copy of the root/

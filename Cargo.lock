@@ -252,6 +252,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "input"
+version = "0.1.0"
+
+[[package]]
 name = "js-sys"
 version = "0.3.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
