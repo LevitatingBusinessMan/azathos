@@ -7,4 +7,6 @@ members = [
     "color",
     "id",
     "ls",
+    "display",
+    "fb",
 ]
