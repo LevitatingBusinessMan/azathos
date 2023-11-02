@@ -16,7 +16,8 @@ build:
 	cargo build
 
 run:
-	qemu-system-x86_64 -kernel linux -append "console=ttyS0 init=/init loglevel=7" -initrd rootfs.cpio.gz -nographic -m 1024
+	#qemu-system-x86_64 -vga virtio -kernel linux -append "init=/init loglevel=7" -initrd rootfs.cpio.gz -m 1024
+	qemu-system-x86_64 -nographic -kernel linux -append "console=ttyS0 init=/init loglevel=7" -initrd rootfs.cpio.gz -m 1024
 
 clean:
 	rm -f rootfs.cpio.gz
