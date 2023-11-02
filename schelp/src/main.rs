@@ -6,7 +6,7 @@ use std::io::{self, Write, Read};
 use std::sync::{LazyLock, Mutex};
 use color::{green,red};
 
-static RC_FILENAME: &'static str = ".schelprc";
+static RC_FILENAME: &'static str = "schelprc";
 
 static ALIASES: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -56,7 +56,7 @@ fn main() {
 }
 
 fn read_rc() {
-    if let Ok(schelprc) = std::fs::read_to_string(std::env::home_dir().unwrap().join(RC_FILENAME)) {
+    if let Ok(schelprc) = std::fs::read_to_string(std::path::Path::new("/etc").join(RC_FILENAME)) {
         for line in schelprc.lines() {
             if let Some((cmd, args)) = parse(line.trim()) {
                 execute(cmd, args);
