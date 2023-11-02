@@ -49,8 +49,8 @@ fn main() {
                 stdin.read_line(&mut line).unwrap();
             },
         }
-        if let Some((cmd, args)) = parse(line.trim()) {
-            status = execute(cmd, args);
+        if let Some((cmd, args, background)) = parse(line.trim()) {
+            status = execute(cmd, args, background);
         }
     }
 }
@@ -58,8 +58,8 @@ fn main() {
 fn read_rc() {
     if let Ok(schelprc) = std::fs::read_to_string(std::path::Path::new("/etc").join(RC_FILENAME)) {
         for line in schelprc.lines() {
-            if let Some((cmd, args)) = parse(line.trim()) {
-                execute(cmd, args);
+            if let Some((cmd, args, background)) = parse(line.trim()) {
+                execute(cmd, args, background);
             }
         }
     }
@@ -79,7 +79,7 @@ fn prompt(status: &Option<(bool, Option<i32>)>, args: &Args) {
     io::stdout().flush().unwrap();
 }
 
-fn parse(line: &str) -> Option<(String, Vec<String>)> {
+fn parse(line: &str) -> Option<(String, Vec<String>, bool)> {
     let mut line = line.to_owned();
     if line.starts_with('#') || line.is_empty() {
         return None
@@ -88,11 +88,18 @@ fn parse(line: &str) -> Option<(String, Vec<String>)> {
     let mut current_arg = String::new();
     let mut is_string = false;
 
-    line.push(' ');
+    let mut background = false;
+
+    if line.ends_with('&') {
+        background = true;
+        line.remove(line.len()-1);
+    }
+
+    line.push('\n');
 
     // check for aliases to expand
     for (alias, expansion) in ALIASES.lock().unwrap().iter() {
-        if line.starts_with(&(alias.to_owned() + " ")) {
+        if line.starts_with(&(alias.to_owned() + " ")) || line.starts_with(&(alias.to_owned() + "\n")) {
             line = line.replacen(alias, &expansion, 1);
             break
         }
@@ -103,7 +110,7 @@ fn parse(line: &str) -> Option<(String, Vec<String>)> {
             '"' => {
                 is_string = !is_string
             },
-            ' ' => {
+            ' ' | '\n' => {
                 if is_string {
                     current_arg.push(c)
                 } else if !current_arg.is_empty() {
@@ -135,7 +142,7 @@ fn parse(line: &str) -> Option<(String, Vec<String>)> {
 
     let cmd = args.remove(0);
 
-    return Some((cmd, args))
+    return Some((cmd, args, background))
 }
 
 // either set or unset the status variable
@@ -147,7 +154,7 @@ fn save_status(code: Option<i32>) {
 }
 
 /// Returns None if nothing was executed
-fn execute(cmd: String, args: Vec<String>) -> Option<(bool, Option<i32>)> {
+fn execute(cmd: String, args: Vec<String>, background: bool) -> Option<(bool, Option<i32>)> {
     // possibly execute as build_in
     if let Some((suc, code)) = build_in(&cmd, &args) {
         save_status(code);
@@ -155,18 +162,32 @@ fn execute(cmd: String, args: Vec<String>) -> Option<(bool, Option<i32>)> {
     }
 
     let mut command = std::process::Command::new(&cmd);
-    let command = command.args(args);
+    let command = command.args(&args);
 
-    match command.status() {
-        Ok(status) => {
-            save_status(status.code());
-            return Some((status.success(), status.code()))
-        },
-        Err(e) => {
-            save_status(None);
-            println!("{cmd}: {e}");
-            None
-        },
+    if background {
+        match command.spawn() {
+            Ok(_child) => {
+                save_status(None);
+                None
+            },
+            Err(e) => {
+                save_status(None);
+                println!("{cmd}: {e}");
+                None
+            },
+        }
+    } else {
+        match command.status() {
+            Ok(status) => {
+                save_status(status.code());
+                Some((status.success(), status.code()))
+            },
+            Err(e) => {
+                save_status(None);
+                println!("{cmd}: {e}");
+                None
+            },
+        }
     }
 }
 
@@ -189,8 +210,10 @@ fn build_in(cmd: &str, args: &[String]) -> Option<(bool, Option<i32>)> {
         },
         "alias" => {
             if args.len() < 2{
-                println!("Invalid use of alias");
-                return Some((false, Some(1)))
+                for alias in ALIASES.lock().unwrap().iter() {
+                    println!("{} = {}", alias.0, alias.1);
+                }
+                Some((true, Some(0)))
             } else {
                 ALIASES.lock().unwrap().insert(args[0].to_owned(), (&args[1..]).join(" ").to_string());
                 Some((true, Some(0)))

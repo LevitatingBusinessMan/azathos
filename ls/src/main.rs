@@ -97,13 +97,6 @@ fn print_entry(entry: &DirEntry, args: &Args, max_size: usize) {
                 Err(_) => "#".to_owned(),
             }
         }
-    } else if metadata.permissions().mode() & 0o111 > 0 {
-        if args.color {
-            buf = red!(buf);
-        } 
-        if args.classify {
-            buf.push('*');
-        }
     } else if type_.is_fifo() {
         if args.color {
             buf = yellow!(buf);
@@ -121,6 +114,13 @@ fn print_entry(entry: &DirEntry, args: &Args, max_size: usize) {
     } else if type_.is_block_device() || type_.is_char_device() {
         if args.color {
             buf = yellow!(buf);
+        }
+    }  else if metadata.permissions().mode() & 0o111 > 0 {
+        if args.color {
+            buf = red!(buf);
+        } 
+        if args.classify {
+            buf.push('*');
         }
     }
 
