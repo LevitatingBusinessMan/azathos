@@ -1,4 +1,5 @@
-pub const IO_GET_VSCREENINFO: i32 = 0x4600;
+pub const IOGET_VSCREENINFO: i32 = 0x4600;
+pub const IOPUT_VSCREENINFO: i32 = 0x4601;
 
 /// Struct representing screen information for a framebuffer device
 #[repr(C)]

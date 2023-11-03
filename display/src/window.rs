@@ -19,6 +19,6 @@ impl Window {
 	}
 	pub fn draw(&self, fb: &mut FrameBuffer, v_info: &fb::var_screeninfo) {
 		draw::draw_rect_border(self.width, self.height, self.x, self.y, Pixel::new(0x00, 0xff, 0x00, 0x00), 1, fb, v_info);
-		draw::draw_rect(self.width, self.height, self.x, self.y, Pixel::new(0, 0, 0, 0), fb, v_info);
+		draw::draw_rect(self.width, self.height, self.x, self.y, Pixel::new(0x00, 0x00, 0x00, 0x00), fb, v_info);
 	}
 }

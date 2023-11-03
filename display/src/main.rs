@@ -9,6 +9,8 @@ use window::Window;
 
 mod draw;
 
+mod cursor;
+
 #[derive(Parser)]
 struct Args {
 
@@ -39,56 +41,64 @@ const MAP_FAILED: i32 = -1;
 // https://docs.kernel.org/fb/index.html
 fn main() {
     let args = Args::parse();
-    unsafe {
-        let fb = fs::OpenOptions::new().read(true).write(true).open("/dev/fb0").unwrap_or_else(|e| {
+        let fbfile = fs::OpenOptions::new().read(true).write(true).open("/dev/fb0").unwrap_or_else(|e| {
             println!("Error opening framebuffer: {}", e);
             exit(1);
         });
 
         let v_info: MaybeUninit<fb::var_screeninfo> = MaybeUninit::uninit();
-        if ioctl(fb.as_raw_fd(), fb::IO_GET_VSCREENINFO, &v_info) == -1 {
+        if unsafe { ioctl(fbfile.as_raw_fd(), fb::IOGET_VSCREENINFO, &v_info) } == -1 {
             println!("Failed to get variable screen info: {}", io::Error::last_os_error());
             exit(1);
         }
-        let v_info = v_info.assume_init();
+        let mut v_info = unsafe { v_info.assume_init() };
 
         println!("{:#?}", v_info);
 
-        if v_info.bits_per_pixel != 32 {
-            println!("bpp is not 32");
+        v_info.bits_per_pixel = 32;
+        v_info.xres_virtual = v_info.xres;
+        v_info.yres_virtual = v_info.yres;
+        v_info.xoffset = 0;
+        v_info.yoffset = 0;
+
+        if unsafe { ioctl(fbfile.as_raw_fd(), fb::IOPUT_VSCREENINFO, &v_info) } == -1 {
+            println!("Failed to set variable screen info: {}", io::Error::last_os_error());
             exit(1);
         }
 
-        let size = (v_info.xres * v_info.yres * (v_info.bits_per_pixel / 8)) as usize;
+        let size = (v_info.xres_virtual * v_info.yres_virtual * (v_info.bits_per_pixel / 8)) as usize;
 
-        let framebuffer_addr = mmap(
+        let framebuffer_addr = unsafe { mmap(
             ptr::null_mut(),
             size,
             PROT_WRITE,
             MAP_SHARED,
-            fb.as_raw_fd(),
+            fbfile.as_raw_fd(),
             0,     
-        ) as *mut Pixel;
+        ) } as *mut Pixel;
         if framebuffer_addr as i32 == MAP_FAILED {
             println!("Failed to map framebuffer: {}", io::Error::last_os_error());
         }
-        let framebuffer: &mut FrameBuffer = std::slice::from_raw_parts_mut(framebuffer_addr, size);
+        let fb: &mut FrameBuffer = unsafe { std::slice::from_raw_parts_mut(framebuffer_addr, size) };
         
         env::set_current_dir("/tmp").expect("Failed to move to /tmp");
-        let sfd = create_socket();
+        let sfd = unsafe { create_socket() };
     
-        clear_display(&v_info, framebuffer);
+        let win = Window::create(200,100, Some((20,20)));
 
-        Window::create(200,100, Some((20,20))).draw(framebuffer, &v_info);
+        clear_display(&v_info, fb);
+        win.draw(fb, &v_info);
 
+        let mut mouse = input::mouse().unwrap();
+        mouse.set(v_info.xres/2, v_info.yres/2);
         loop {
-            //read_socket(sfd);
+            cursor::draw_cursor(mouse.x, mouse.y, fb, &v_info);
+            mouse.read().unwrap();
         }
 
-        if munmap(framebuffer_addr as *mut c_void, size) == -1 {
+        if unsafe { munmap(framebuffer_addr as *mut c_void, size) } == -1 {
             println!("Failed to close framebuffer map: {}", io::Error::last_os_error());
         };
-    }
 }
 
 fn read_socket(sfd: i32) {
