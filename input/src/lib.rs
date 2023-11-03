@@ -12,9 +12,16 @@ use std::os::fd::RawFd;
 use std::path::Path;
 use std::io::Read;
 use std::ptr;
+use std::ptr::addr_of;
+use std::ptr::addr_of_mut;
+use libc::FD_ISSET;
+use libc::FD_SET;
+use libc::FD_ZERO;
 use libc::input_event;
 use libc::ioctl;
 use ioctl_macro::_IOR;
+use libc::select;
+use libc::timeval;
 
 #[derive(Debug)]
 pub struct Device {
@@ -66,13 +73,42 @@ pub enum MouseEvent {
     Task(bool),
 }
 
+// TODO: Initialize [Mouse] with a limit,
+// ensuring it doen't go off-the-screen.
 pub struct Mouse {
     pub file: fs::File,
     pub x: u32,
     pub y: u32,
+    pub left: bool,
+    pub middle: bool,
+    pub right: bool,
 }
 
 impl Mouse {
+
+    pub fn has_data(&mut self) -> io::Result<bool> {
+        let mut readfds = MaybeUninit::uninit();
+        unsafe {
+            FD_ZERO(readfds.as_mut_ptr());
+            FD_SET(self.file.as_raw_fd(), readfds.as_mut_ptr());
+        }
+        let mut tv = timeval {
+            tv_sec: 0,
+            tv_usec: 0,
+        };
+        let res = unsafe { select(
+            self.file.as_raw_fd() + 1,
+             readfds.as_mut_ptr(),
+             ptr::null_mut(),
+             ptr::null_mut(),
+             addr_of_mut!(tv),
+        ) };
+        if res == -1 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(unsafe { FD_ISSET(self.file.as_raw_fd(), readfds.as_ptr()) })
+    }
+
     /// Read a single [input_event], this will most likely break the state of this device.
     pub fn read_single(&mut self) -> io::Result<input_event> {
         let mut buf: [u8;size_of::<input_event>() ] = [0; size_of::<input_event>()];
@@ -110,8 +146,8 @@ impl Mouse {
                 match events.len() {
                     1 => {
                         match events[0].code {
-                            0 => Some(MouseEvent::MoveRel(0, events[0].value)),
-                            1 => Some(MouseEvent::MoveRel(events[0].value, 0)),
+                            0 => Some(MouseEvent::MoveRel(events[0].value, 0)),
+                            1 => Some(MouseEvent::MoveRel(0, events[0].value)),
                             8 => Some(MouseEvent::ScrollVert(events[0].value)),
                             6 => Some(MouseEvent::ScrollHori(events[0].value)),
                             _ => {
@@ -182,7 +218,7 @@ impl Mouse {
     /// Create a [Mouse] knowing the evdev file.
     pub fn from_evdev<S: AsRef<OsStr> + ?Sized>(evdev: &S) -> io::Result<Self> {
         let file = fs::File::open(Path::new("/dev/input").join(Path::new(&evdev)))?;
-        Ok(Mouse { file, x: 0, y: 0 })
+        Ok(Mouse { file, x: 0, y: 0, left: false, middle: false, right: false })
     }
 }
 

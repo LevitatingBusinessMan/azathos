@@ -92,8 +92,10 @@ fn main() {
         let mut mouse = input::mouse().unwrap();
         mouse.set(v_info.xres/2, v_info.yres/2);
         loop {
-            cursor::draw_cursor(mouse.x, mouse.y, fb, &v_info);
-            mouse.read().unwrap();
+            if mouse.has_data().unwrap() {
+                let mouse_event = mouse.read().unwrap();
+                cursor::draw_cursor(mouse.x, mouse.y, fb, &v_info);
+            }
         }
 
         if unsafe { munmap(framebuffer_addr as *mut c_void, size) } == -1 {
