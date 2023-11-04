@@ -2,8 +2,7 @@
 use clap::Parser;
 use libc::{open, ioctl, mmap, PROT_WRITE, MAP_SHARED, munmap, c_void, close, syncfs, socket, AF_UNIX, SOCK_STREAM, bind, sockaddr};
 use fb;
-use slab_tree::TreeBuilder;
-use std::{io, ffi::CString, mem::{MaybeUninit, size_of}, ptr::{null, null_mut, self, addr_of, write_volatile}, process::exit, time::Duration, thread, env, fs, path::Path, os::fd::{AsFd, IntoRawFd, AsRawFd}};
+use std::{io, ffi::CString, mem::{MaybeUninit, size_of}, ptr::{null, null_mut, self, addr_of, write_volatile}, process::exit, time::Duration, thread, env, fs, path::Path, os::fd::{AsFd, IntoRawFd, AsRawFd}, rc::Rc, cell::RefCell, borrow::Borrow};
 
 mod window;
 use window::Window;
@@ -26,25 +25,25 @@ macro_rules! c {
 static SOCK_FILE: &'static str = "display.sock";
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 struct Pixel {
     blue: u8,
     green: u8,
     red: u8,
-    alpha: u8,
+    _alpha: u8,
 }
 
 type FrameBuffer = [Pixel];
 
 struct BitMap {
-    height: u32,
     width: u32,
+    height: u32,
     pxs: Box<[Pixel]>,
 }
 
 impl BitMap {
     /// Get a [BitMap] from the framebuffer
-    pub fn from_buffer(fb: &mut [Pixel], height: u32, width: u32) -> Self {
+    pub fn from_buffer(fb: &mut [Pixel], width: u32, height: u32) -> Self {
         let pxs: Box<[Pixel]> = unsafe { Box::from_raw(
             ptr::slice_from_raw_parts_mut(
             fb.as_mut_ptr(),
@@ -53,9 +52,33 @@ impl BitMap {
         ) };
         BitMap {height, width, pxs}
     }
+
+    /// If this bitmap is in-fact a pointer to the framebuffer
+    /// it cannot be dropped. So leak it.
+    pub fn leak(self) {
+        Box::leak(self.pxs);
+    }
 }
 
-const MAP_FAILED: i32 = -1;
+fn configure_vinfo(v_info: &mut fb::var_screeninfo) {
+    v_info.bits_per_pixel = 32;
+    v_info.xres_virtual = v_info.xres;
+    v_info.yres_virtual = v_info.yres;
+    v_info.xoffset = 0;
+    v_info.yoffset = 0;
+}
+
+// pub struct Node {
+//     id: usize,
+//     parent: Option<usize>,
+//     children: Vec<usize>,
+// }
+
+// impl Node {
+//     fn get<'a, T>(&'a self, arena: &'a Vec<Rc<RefCell<T>>>) -> Option<&Rc<RefCell<T>>> {
+//         arena.get(self.id)
+//     }
+// }
 
 // https://docs.kernel.org/fb/index.html
 fn main() {
@@ -72,13 +95,10 @@ fn main() {
         }
         let mut v_info = unsafe { v_info.assume_init() };
 
-        println!("{:#?}", v_info);
+        //println!("{:#?}", v_info);
+        println!("{}x{}", v_info.xres, v_info.yres);
 
-        v_info.bits_per_pixel = 32;
-        v_info.xres_virtual = v_info.xres;
-        v_info.yres_virtual = v_info.yres;
-        v_info.xoffset = 0;
-        v_info.yoffset = 0;
+        configure_vinfo(&mut v_info);
 
         if unsafe { ioctl(fbfile.as_raw_fd(), fb::IOPUT_VSCREENINFO, &v_info) } == -1 {
             println!("Failed to set variable screen info: {}", io::Error::last_os_error());
@@ -95,34 +115,61 @@ fn main() {
             fbfile.as_raw_fd(),
             0,     
         ) } as *mut Pixel;
-        if framebuffer_addr as i32 == MAP_FAILED {
+        if framebuffer_addr as i32 == -1 {
             println!("Failed to map framebuffer: {}", io::Error::last_os_error());
         }
         let fb: &mut FrameBuffer = unsafe { std::slice::from_raw_parts_mut(framebuffer_addr, size) };
         
         env::set_current_dir("/tmp").expect("Failed to move to /tmp");
-        let sfd = unsafe { create_socket() };
+        //let sfd = unsafe { create_socket() };
 
-        let root = Window {
-            x: 10,
-            y: 10,
-            bitmap: BitMap {
-                height: 100,
-                width: 100,
-                pxs: Box::new([Pixel::new(3, 3, 3, 3); 4])
-            }
-        };
-        let mut tree = TreeBuilder::new().with_root(root).build();
+        // let mut arena: Vec<Rc<RefCell<Window>>> = vec![];
+        
+        // let root = Node {
+        //     id: 0,
+        //     parent: None,
+        //     children: vec![1],
+        // };
 
-        tree.root_mut().unwrap().data().decorate(fb, &v_info);
+        // let win = Node {
+        //     id: 1,
+        //     parent: Some(0),
+        //     children: vec![1],
+        // };
 
-        let mut mouse = input::mouse().unwrap();
-        mouse.set(v_info.xres/2, v_info.yres/2);
+        // arena.push(Rc::new(RefCell::new(window::create_root(&v_info))));
+        // arena.push(Rc::new(RefCell::new(Window::create(100, 100, 100, 100))));
+
+        let mut root = window::create_root(&v_info);
+        let win = Window::create(100, 100, 100, 100);
+
+        let mut fb_bitmap = BitMap::from_buffer(fb, v_info.xres, v_info.yres);
+
+        // win.map(&mut root.bitmap);
+        draw::map(&win.bitmap, &mut root.bitmap, 100, 100);
+        draw::map_(&root.bitmap, &mut fb_bitmap, 0, 0);
+        //root.map(&mut fb_bitmap);
+
+        fb_bitmap.leak();
+
         loop {
-            if mouse.has_data().unwrap() {
-                let mouse_event = mouse.read().unwrap();
-            }
+
         }
+
+        // let mut root = root.get(&arena).unwrap().try_borrow_mut().unwrap();
+        // println!("{}", root.bitmap.pxs.len());
+        // // win.get(&arena).unwrap().try_borrow().unwrap().map(&mut root.bitmap);
+        // // println!("mapp");
+        // // root.map(&mut BitMap::from_buffer(fb, v_info.xres, v_info.yres));
+        // // println!("no");
+
+        // let mut mouse = input::mouse().unwrap();
+        // mouse.set(v_info.xres/2, v_info.yres/2);
+        // loop {
+        //     if mouse.has_data().unwrap() {
+        //         let mouse_event = mouse.read().unwrap();
+        //     }
+        // }
 
         if unsafe { munmap(framebuffer_addr as *mut c_void, size) } == -1 {
             println!("Failed to close framebuffer map: {}", io::Error::last_os_error());
@@ -131,15 +178,6 @@ fn main() {
 
 fn read_socket(sfd: i32) {
 
-}
-
-fn clear_display(v_info: &fb::var_screeninfo, framebuffer: &mut FrameBuffer) {
-    for i in 0..v_info.yres {
-        for j in 0..v_info.xres {
-            // Do I need write_volatile?
-            framebuffer[(v_info.xres * i + j) as usize] = Pixel::new(0x00, 0xff, 0xff, 0xff);
-        }
-    }
 }
 
 /// Will create the socket file in current dir
@@ -175,7 +213,7 @@ unsafe fn create_socket() -> i32 {
 }
 
 impl Pixel {
-    const fn new(alpha: u8, red: u8, green: u8, blue: u8) -> Self {
-        Self { alpha, red, green, blue }
+    const fn new(red: u8, green: u8, blue: u8) -> Self {
+        Self { _alpha: 0x00, red, green, blue }
     }
 }

@@ -1,3 +1,4 @@
 rootfs.cpio*
 rootfs
 target
+.gdb_history

@@ -9,6 +9,7 @@ edition = "2021"
 path = "src/lib.rs"
 
 [dependencies]
+id_tree = "1.8.0"
 slab_tree = "0.3.2"
 
 [target.x86_64-unknown-linux-musl.dependencies]

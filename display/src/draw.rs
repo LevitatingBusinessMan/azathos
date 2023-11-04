@@ -1,3 +1,5 @@
+use std::ptr::write_volatile;
+
 use crate::{FrameBuffer, Pixel, BitMap};
 
 /// Map a bitmap onto another
@@ -6,11 +8,33 @@ pub(crate) fn map(from: &BitMap, to: &mut BitMap, x: u32, y: u32) {
 	let j = 0;
 	for _ in 0..from.height {
 		for _ in 0..from.width {
+			//unsafe { write_volatile(std::ptr::addr_of!(to.pxs[i]) as *mut Pixel, from.pxs[j]) }
 			to.pxs[i] = from.pxs[j];
 			i += 1;
 		}
 		i += (to.width - (x + from.width)) as usize;
 		i += x as usize;
+	}
+}
+
+pub(crate) fn map_(from: &BitMap, to: &mut BitMap, x: u32, y: u32) {
+	let mut i = (y * to.width + x) as usize;
+	for sy in 0..from.height {
+		for sx in 0..from.width {
+			to.pxs[i] = from.pxs[(sy * from.width + sx) as usize];
+			i += 1;
+		}
+		i += (to.width - (x + from.width)) as usize;
+		i += x as usize;
+	}
+}
+
+/// Fill a bitmap with a singular color
+pub(crate) fn fill(b: &mut BitMap, px: Pixel) {
+	for x in 0..b.height {
+		for y in 0..b.width {
+			b.pxs[(x * y) as usize] = px
+		}
 	}
 }
 
