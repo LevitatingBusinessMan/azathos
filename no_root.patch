@@ -1,0 +1,10 @@
+diff --git a/usr/default_cpio_list b/usr/default_cpio_list
+index 37b3864..512ae9e 100644
+--- a/usr/default_cpio_list
++++ b/usr/default_cpio_list
+@@ -3,4 +3,4 @@
+ 
+ dir /dev 0755 0 0
+ nod /dev/console 0600 0 0 c 5 1
+-dir /root 0700 0 0
++# dir /root 0700 0 0
