@@ -1,14 +1,18 @@
 #![feature(str_split_whitespace_remainder)]
 #![feature(lazy_cell)]
 use clap::Parser;
+use signal::Signal;
 use std::collections::HashMap;
 use std::io::{self, Write, Read};
 use std::sync::{LazyLock, Mutex};
 use color::{green,red};
+use std::os::unix::process::*;
 
 static RC_FILENAME: &'static str = "schelprc";
 
 static ALIASES: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+mod signal;
 
 #[derive(Parser)]
 struct Args {
@@ -164,6 +168,7 @@ fn execute(cmd: String, args: Vec<String>, background: bool) -> Option<(bool, Op
     let mut command = std::process::Command::new(&cmd);
     let command = command.args(&args);
 
+    // TODO keep track of backgrounded task
     if background {
         match command.spawn() {
             Ok(_child) => {
@@ -179,6 +184,12 @@ fn execute(cmd: String, args: Vec<String>, background: bool) -> Option<(bool, Op
     } else {
         match command.status() {
             Ok(status) => {
+                if let Some(signal) = status.signal() {
+                    match Signal::try_from(signal) {
+                        Ok(sigvar) => println!("{cmd}: Stopped with signal {:?}", sigvar),
+                        Err(_) => println!("{cmd}: Stopped with signal {:#x}", signal)
+                    }
+                }
                 save_status(status.code());
                 Some((status.success(), status.code()))
             },
