@@ -2,6 +2,7 @@
 use clap::Parser;
 use libc::{open, ioctl, mmap, PROT_WRITE, MAP_SHARED, munmap, c_void, close, syncfs, socket, AF_UNIX, SOCK_STREAM, bind, sockaddr};
 use fb;
+use slab_tree::TreeBuilder;
 use std::{io, ffi::CString, mem::{MaybeUninit, size_of}, ptr::{null, null_mut, self, addr_of, write_volatile}, process::exit, time::Duration, thread, env, fs, path::Path, os::fd::{AsFd, IntoRawFd, AsRawFd}};
 
 mod window;
@@ -24,7 +25,6 @@ macro_rules! c {
 
 static SOCK_FILE: &'static str = "display.sock";
 
-
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct Pixel {
@@ -35,6 +35,25 @@ struct Pixel {
 }
 
 type FrameBuffer = [Pixel];
+
+struct BitMap {
+    height: u32,
+    width: u32,
+    pxs: Box<[Pixel]>,
+}
+
+impl BitMap {
+    /// Get a [BitMap] from the framebuffer
+    pub fn from_buffer(fb: &mut [Pixel], height: u32, width: u32) -> Self {
+        let pxs: Box<[Pixel]> = unsafe { Box::from_raw(
+            ptr::slice_from_raw_parts_mut(
+            fb.as_mut_ptr(),
+            (height * width * 4).try_into().unwrap()
+            )
+        ) };
+        BitMap {height, width, pxs}
+    }
+}
 
 const MAP_FAILED: i32 = -1;
 
@@ -83,18 +102,25 @@ fn main() {
         
         env::set_current_dir("/tmp").expect("Failed to move to /tmp");
         let sfd = unsafe { create_socket() };
-    
-        let win = Window::create(200,100, Some((20,20)));
 
-        clear_display(&v_info, fb);
-        win.draw(fb, &v_info);
+        let root = Window {
+            x: 10,
+            y: 10,
+            bitmap: BitMap {
+                height: 100,
+                width: 100,
+                pxs: Box::new([Pixel::new(3, 3, 3, 3); 4])
+            }
+        };
+        let mut tree = TreeBuilder::new().with_root(root).build();
+
+        tree.root_mut().unwrap().data().decorate(fb, &v_info);
 
         let mut mouse = input::mouse().unwrap();
         mouse.set(v_info.xres/2, v_info.yres/2);
         loop {
             if mouse.has_data().unwrap() {
                 let mouse_event = mouse.read().unwrap();
-                cursor::draw_cursor(mouse.x, mouse.y, fb, &v_info);
             }
         }
 
@@ -149,7 +175,7 @@ unsafe fn create_socket() -> i32 {
 }
 
 impl Pixel {
-    fn new(alpha: u8, red: u8, green: u8, blue: u8) -> Self {
+    const fn new(alpha: u8, red: u8, green: u8, blue: u8) -> Self {
         Self { alpha, red, green, blue }
     }
 }

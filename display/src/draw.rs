@@ -1,4 +1,18 @@
-use crate::{FrameBuffer, Pixel};
+use crate::{FrameBuffer, Pixel, BitMap};
+
+/// Map a bitmap onto another
+pub(crate) fn map(from: &BitMap, to: &mut BitMap, x: u32, y: u32) {
+	let mut i = (y * to.width + x) as usize;
+	let j = 0;
+	for _ in 0..from.height {
+		for _ in 0..from.width {
+			to.pxs[i] = from.pxs[j];
+			i += 1;
+		}
+		i += (to.width - (x + from.width)) as usize;
+		i += x as usize;
+	}
+}
 
 pub(crate) fn draw_rect(
 	width: u32,
