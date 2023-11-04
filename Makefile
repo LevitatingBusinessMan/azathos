@@ -1,7 +1,7 @@
 QEMU_FLAGS ?= -kernel linux -initrd rootfs.cpio.zst -m 1024
 
 cpio: install
-	cd rootfs; time find | cpio --quiet -H newc -o | zstd > ../rootfs.cpio.zst
+	cd rootfs; find | cpio --quiet -H newc -o | zstd > ../rootfs.cpio.zst
 
 install: build directory
 	install target/x86_64-unknown-linux-musl/debug/init rootfs
@@ -30,6 +30,6 @@ debug:
 	qemu-system-x86_64  $(QEMU_FLAGS) -nographic -append "console=ttyS0 loglevel=8"  -s -S
 
 clean:
-	rm -f rootfs.cpio.gz
+	rm -f rootfs.cpio*
 	rm -fr rootfs
 	cargo clean

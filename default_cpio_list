@@ -1,0 +1,3 @@
+# Like usr/default_cpio_list found in the kernel tree
+# Use with CONFIG_INITRAMFS_SOURCE
+nod /dev/console 0600 0 0 c 5 1
