@@ -49,6 +49,8 @@ macro_rules! log {
     }};
 }
 
+static  DEFAULT_PATH: &'static str = "/bin";
+
 fn main() {
     println!("Init started");
 
@@ -74,6 +76,7 @@ fn init() -> Result<()> {
         .env("HOME", &config.login.home)
         .env("USER", &config.login.user)
         .env("SHELL", &config.login.shell)
+        .env("PATH", DEFAULT_PATH)
         .current_dir(&config.login.cwd)
         .spawn()?;
     Ok(())

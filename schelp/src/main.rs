@@ -1,5 +1,6 @@
 #![feature(str_split_whitespace_remainder)]
 #![feature(lazy_cell)]
+#![feature(let_chains)]
 use clap::Parser;
 use libc::{WIFEXITED, WIFSIGNALED, WEXITSTATUS, WTERMSIG};
 use signal::Signal;
@@ -7,7 +8,8 @@ use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::io::{self, Write, Read};
 use std::mem::MaybeUninit;
-use std::ptr;
+use std::path::{Path, PathBuf};
+use std::{ptr, fs, env};
 use std::sync::{LazyLock, Mutex};
 use color::{green,red};
 
@@ -88,6 +90,7 @@ fn prompt(status: &Option<i32>, args: &Args) {
     io::stdout().flush().unwrap();
 }
 
+// FIXME does not handle empty strings properly
 fn parse(line: &str) -> Option<(String, Vec<String>, bool)> {
     let mut line = line.to_owned();
     if line.starts_with('#') || line.is_empty() {
@@ -117,7 +120,10 @@ fn parse(line: &str) -> Option<(String, Vec<String>, bool)> {
     for c in line.chars() {
         match c {
             '"' => {
-                is_string = !is_string
+                if is_string && current_arg.is_empty() {
+                    args.push("".to_owned());
+                }
+                is_string = !is_string;
             },
             ' ' | '\n' => {
                 if is_string {
@@ -125,7 +131,7 @@ fn parse(line: &str) -> Option<(String, Vec<String>, bool)> {
                 } else if !current_arg.is_empty() {
                     // handle variables
                     if current_arg.starts_with('$') {
-                        if let Ok(val) = std::env::var(&current_arg[1..]) {
+                        if let Ok(val) = env::var(&current_arg[1..]) {
                             current_arg = val
                         } else {
                             println!("Variable {} not found", current_arg);
@@ -168,17 +174,24 @@ fn execute(cmd: String, args: Vec<String>, background: bool) -> Option<i32> {
         return Some(code)
     }
 
-    let mut command = std::process::Command::new(&cmd);
-    let command = command.args(&args);
-
-    // Libc is used here instead of Rusts Command and Child struct
-    // for better control. It also fits the projects philosophy better.
-
     if background {
         println!("Currently, background jobs have been disabled.");
         save_status(None);
         return None
     }
+
+    // Libc is used here instead of Rusts Command and Child struct
+    // for better control. It also fits the projects philosophy better.
+
+    let path_to_use = env::var("PATH").unwrap_or("".to_string()); //+ " .";
+    let path = path_search(&path_to_use, &cmd);
+
+    if path.is_none() {
+        eprintln!("schelp: Command {cmd} was not found");
+        return None;
+    }
+
+    let path = path.unwrap().to_string_lossy().to_string();
 
     let pid = unsafe { libc::fork() };
     if pid == -1 {
@@ -186,7 +199,7 @@ fn execute(cmd: String, args: Vec<String>, background: bool) -> Option<i32> {
     }
 
     match pid {
-        0 => fork_child(cmd, args),
+        0 => fork_child(path, args),
         _ => fork_parent(pid, &cmd)
     }
 }
@@ -305,6 +318,23 @@ fn build_in(cmd: &str, args: &[String]) -> Option<i32> {
         }
         _ => None,
     }
+}
+
+// Search path
+fn path_search(path: &str, cmd: &str) -> Option<PathBuf> {
+    for dir in path.split_ascii_whitespace() {
+        match fs::read_dir(Path::new(dir)) {
+            Ok(entries) => {
+                for ent in entries {
+                    if let Ok(ent) = ent && ent.file_name() == cmd {
+                        return Some(ent.path());
+                    }
+                }
+            },
+            Err(e) => eprintln!("Failed to open {dir} as found in  $PATH: {e}")
+        }
+    }
+    return None;
 }
 
 // Old code using [Command] and [Child]
