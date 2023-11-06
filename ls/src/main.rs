@@ -46,8 +46,10 @@ fn main() {
         Ok(readdir) => {
             let readdir = readdir.collect();
             let max_size_len = get_max_size_file(&readdir).to_string().len();
+            let mut readdir: Vec<&DirEntry> = readdir.iter().map(|e| e.as_ref().unwrap()).collect();
+            readdir.sort_by_key(|e| e.file_name());
             for entry in readdir {
-                print_entry(&entry.unwrap(), &args, max_size_len);
+                print_entry(&entry, &args, max_size_len);
             }
             if !args.list {
                 println!()
