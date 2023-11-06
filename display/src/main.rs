@@ -2,7 +2,7 @@
 use clap::Parser;
 use libc::{open, ioctl, mmap, PROT_WRITE, MAP_SHARED, munmap, c_void, close, syncfs, socket, AF_UNIX, SOCK_STREAM, bind, sockaddr};
 use fb;
-use std::{io, ffi::CString, mem::{MaybeUninit, size_of}, ptr::{null, null_mut, self, addr_of, write_volatile}, process::exit, time::Duration, thread, env, fs, path::Path, os::fd::{AsFd, IntoRawFd, AsRawFd}, rc::Rc, cell::RefCell, borrow::Borrow};
+use std::{io::{self, Write}, ffi::CString, mem::{MaybeUninit, size_of}, ptr::{null, null_mut, self, addr_of, write_volatile}, process::exit, time::Duration, thread, env, fs, path::Path, os::fd::{AsFd, IntoRawFd, AsRawFd}, rc::Rc, cell::RefCell, borrow::Borrow, sync::{self, atomic::AtomicBool}};
 
 mod window;
 use window::Window;
@@ -80,6 +80,8 @@ fn configure_vinfo(v_info: &mut fb::var_screeninfo) {
 //     }
 // }
 
+static RENDERING_CURSOR: AtomicBool = AtomicBool::new(false);
+
 // https://docs.kernel.org/fb/index.html
 fn main() {
     let args = Args::parse();
@@ -140,28 +142,46 @@ fn main() {
         // arena.push(Rc::new(RefCell::new(window::create_root(&v_info))));
         // arena.push(Rc::new(RefCell::new(Window::create(100, 100, 100, 100))));
 
+        fs::OpenOptions::new().write(true).open("/sys/class/vtconsole/vtcon0/bind").unwrap().write_all(b"0").unwrap();
+
         let mut root = window::create_root(&v_info);
-        let win = Window::create(100, 100, 100, 100);
+        let mut win = Window::create(100, 100, 100, 100);
 
         let mut fb_bitmap = BitMap::from_buffer(fb, v_info.xres, v_info.yres);
 
-        // win.map(&mut root.bitmap);
-        draw::map(&win.bitmap, &mut root.bitmap, 100, 100);
-        draw::map_(&root.bitmap, &mut fb_bitmap, 0, 0);
-        //root.map(&mut fb_bitmap);
+        root.map(&mut fb_bitmap);
+        win.map(&mut fb_bitmap);
+        win.decorate(&mut fb_bitmap, &v_info);
 
-        fb_bitmap.leak();
+        let (tx, rx) = sync::mpsc::channel();
 
+        let mut cursor = Window::create(10, 10, 0, 0);
+        draw::fill(&mut cursor.bitmap, Pixel::new(0x59 , 0x95, 0x9e));
+
+        cursor.map(&mut fb_bitmap);
+
+        thread::Builder::new().name("Render thread".to_string()).spawn(move || {
+            loop {
+                let (x, y) = rx.recv().unwrap();
+                RENDERING_CURSOR.store(true, sync::atomic::Ordering::Relaxed);
+                cursor.unmap(&mut fb_bitmap);
+                cursor.x = x;
+                cursor.y = y;
+                cursor.map(&mut fb_bitmap);
+                RENDERING_CURSOR.store(false, sync::atomic::Ordering::Relaxed);
+            }
+        }).unwrap();
+
+        let mut mouse = input::mouse().unwrap();
+        mouse.set(v_info.xres/2, v_info.yres/2);
         loop {
-
+            if mouse.has_data().unwrap() {
+                let mouse_event = mouse.read().unwrap();
+                if RENDERING_CURSOR.load(sync::atomic::Ordering::Relaxed) == false {
+                    tx.send((mouse.x, mouse.y)).unwrap()
+                }
+            }
         }
-
-        // let mut root = root.get(&arena).unwrap().try_borrow_mut().unwrap();
-        // println!("{}", root.bitmap.pxs.len());
-        // // win.get(&arena).unwrap().try_borrow().unwrap().map(&mut root.bitmap);
-        // // println!("mapp");
-        // // root.map(&mut BitMap::from_buffer(fb, v_info.xres, v_info.yres));
-        // // println!("no");
 
         // let mut mouse = input::mouse().unwrap();
         // mouse.set(v_info.xres/2, v_info.yres/2);
@@ -170,6 +190,10 @@ fn main() {
         //         let mouse_event = mouse.read().unwrap();
         //     }
         // }
+
+        //loop {}
+
+        fb_bitmap.leak();
 
         if unsafe { munmap(framebuffer_addr as *mut c_void, size) } == -1 {
             println!("Failed to close framebuffer map: {}", io::Error::last_os_error());

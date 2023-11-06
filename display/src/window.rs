@@ -8,7 +8,10 @@ type WindowId = NodeId;
 pub struct Window {
 	pub x: u32,
 	pub y: u32,
+	/// The bitmap of the window
 	pub bitmap: BitMap,
+	/// The bitmap behind the window
+	pub backing: Option<BitMap>,
 }
 
 impl Window {
@@ -22,12 +25,24 @@ impl Window {
 				width,
 				pxs: vec![Pixel::new(0x00, 0x00, 0x00); (height * width) as usize].into_boxed_slice()
 			},
+			backing: None
 		}
 	}
-	pub fn map(&self, fb: &mut BitMap) {
+	pub fn map(&mut self, fb: &mut BitMap) {
+		if self.backing.is_none() {
+			self.backing = Some(draw::getrect(fb, self.x, self.y, self.bitmap.width, self.bitmap.height))
+		}
 		draw::map(&self.bitmap, fb, self.x, self.y);
 	}
-	pub fn decorate(&self, fb: &mut FrameBuffer, v_info: &fb::var_screeninfo) {
+
+	pub fn unmap(&mut self, fb: &mut BitMap) {
+		if let Some(backing) = &self.backing {
+			draw::map(&backing, fb, self.x, self.y);
+			self.backing = None;
+		}
+	}
+
+	pub fn decorate(&self, fb: &mut BitMap, v_info: &fb::var_screeninfo) {
 		draw::draw_rect_border(self.bitmap.height, self.bitmap.height, self.x, self.y, Pixel::new(0xff, 0x00, 0x00), 1, fb, v_info);
 	}
 }
@@ -39,13 +54,14 @@ impl Window {
 
 pub(crate) fn create_root(v_info: &fb::var_screeninfo) -> Window {
 	Window {
-    x: 0,
-    y: 0,
-    bitmap:
-		BitMap {
-			width: v_info.xres,
-			height: v_info.yres,
-			pxs: vec![Pixel::new(0xff, 0xff, 0xff); (v_info.xres * v_info.yres) as usize].into_boxed_slice(),
-		}
+		x: 0,
+		y: 0,
+		bitmap:
+			BitMap {
+				width: v_info.xres,
+				height: v_info.yres,
+				pxs: vec![Pixel::new(0xff, 0xff, 0xff); (v_info.xres * v_info.yres) as usize].into_boxed_slice(),
+			},
+		backing: None,
 	}
 }
