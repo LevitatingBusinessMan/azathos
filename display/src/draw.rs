@@ -24,8 +24,7 @@ pub(crate) fn map(from: &BitMap, to: &mut BitMap, x: u32, y: u32) {
 			to.pxs[i] = from.pxs[(sy * from.width + sx) as usize];
 			i += 1;
 		}
-		i += (to.width - (x + from.width)) as usize;
-		i += x as usize;
+		i += (to.width - from.width) as usize;
 	}
 }
 
