@@ -2,7 +2,7 @@
 use clap::Parser;
 use libc::{open, ioctl, mmap, PROT_WRITE, MAP_SHARED, munmap, c_void, close, syncfs, socket, AF_UNIX, SOCK_STREAM, bind, sockaddr};
 use fb;
-use std::{io::{self, Write}, ffi::CString, mem::{MaybeUninit, size_of}, ptr::{null, null_mut, self, addr_of, write_volatile}, process::exit, time::Duration, thread, env, fs, path::Path, os::fd::{AsFd, IntoRawFd, AsRawFd}, rc::Rc, cell::RefCell, borrow::Borrow, sync::{self, atomic::AtomicBool}};
+use std::{io::{self, Write}, ffi::CString, mem::{MaybeUninit, size_of}, ptr::{null, null_mut, self, addr_of, write_volatile}, process::exit, time::Duration, thread, env, fs, path::Path, os::fd::{AsFd, IntoRawFd, AsRawFd}, rc::Rc, cell::RefCell, borrow::Borrow, sync::{self, atomic::{AtomicBool, AtomicU64}}};
 
 mod window;
 use window::Window;
@@ -82,6 +82,8 @@ fn configure_vinfo(v_info: &mut fb::var_screeninfo) {
 
 static RENDERING_CURSOR: AtomicBool = AtomicBool::new(false);
 
+static LAST_ID: AtomicU64 = AtomicU64::new(0);
+
 // https://docs.kernel.org/fb/index.html
 fn main() {
     let args = Args::parse();
@@ -142,7 +144,7 @@ fn main() {
         // arena.push(Rc::new(RefCell::new(window::create_root(&v_info))));
         // arena.push(Rc::new(RefCell::new(Window::create(100, 100, 100, 100))));
 
-        fs::OpenOptions::new().write(true).open("/sys/class/vtconsole/vtcon0/bind").unwrap().write_all(b"0").unwrap();
+        //fs::OpenOptions::new().write(true).open("/sys/class/vtconsole/vtcon0/bind").unwrap().write_all(b"0").unwrap();
 
         let mut root = window::create_root(&v_info);
         let mut win = Window::create(100, 100, 100, 100);
@@ -151,11 +153,11 @@ fn main() {
 
         root.map(&mut fb_bitmap);
         win.map(&mut fb_bitmap);
-        win.decorate(&mut fb_bitmap, &v_info);
 
         let (tx, rx) = sync::mpsc::channel();
 
         let mut cursor = Window::create(10, 10, 0, 0);
+        cursor.decorated = false;
         draw::fill(&mut cursor.bitmap, Pixel::new(0x59 , 0x95, 0x9e));
 
         cursor.map(&mut fb_bitmap);
