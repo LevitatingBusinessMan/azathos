@@ -2,11 +2,11 @@
 
 use crate::{FrameBuffer, Pixel, BitMap};
 
-pub(crate) fn getrect(from: &mut BitMap, x: u32, y: u32, width: u32, height: u32) -> BitMap {
+pub(crate) fn get_rect(from: &mut BitMap, x: u32, y: u32, width: u32, height: u32) -> BitMap {
 	let mut pxs: Vec<Pixel> = Vec::with_capacity((from.height * from.width) as usize);
 	for sy in 0..height {
 		for sx in 0..width {
-			pxs.push(from.pxs[(sy * from.width + sx) as usize]);
+			pxs.push(from.pxs[((sy + y) * from.width + (sx + x)) as usize]);
 		}
 	}
 	BitMap {

@@ -30,7 +30,7 @@ impl Window {
 	}
 	pub fn map(&mut self, fb: &mut BitMap) {
 		if self.backing.is_none() {
-			self.backing = Some(draw::getrect(fb, self.x, self.y, self.bitmap.width, self.bitmap.height))
+			self.backing = Some(draw::get_rect(fb, self.x, self.y, self.bitmap.width, self.bitmap.height))
 		}
 		draw::map(&self.bitmap, fb, self.x, self.y);
 	}
