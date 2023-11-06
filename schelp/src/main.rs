@@ -1,6 +1,7 @@
 #![feature(str_split_whitespace_remainder)]
 #![feature(lazy_cell)]
 #![feature(let_chains)]
+#![feature(fs_try_exists)]
 use clap::Parser;
 use libc::{WIFEXITED, WIFSIGNALED, WEXITSTATUS, WTERMSIG};
 use signal::Signal;
@@ -183,15 +184,21 @@ fn execute(cmd: String, args: Vec<String>, background: bool) -> Option<i32> {
     // Libc is used here instead of Rusts Command and Child struct
     // for better control. It also fits the projects philosophy better.
 
-    let path_to_use = env::var("PATH").unwrap_or("".to_string()); //+ " .";
-    let path = path_search(&path_to_use, &cmd);
-
-    if path.is_none() {
-        eprintln!("schelp: Command {cmd} was not found");
-        return None;
+    // Either use the cmd as a path, or find a path
+    let path;
+    if let Ok(true) = fs::try_exists(Path::new(&cmd)) {
+        path = cmd.clone();
+    } else {
+        let path_to_use = env::var("PATH").unwrap_or("".to_string()); //+ " .";
+        let path_search = path_search(&path_to_use, &cmd);
+        if path_search.is_none() {
+            eprintln!("schelp: Command {cmd} was not found");
+            return None;
+        } else {
+            path = path_search.unwrap().to_string_lossy().to_string();
+        }
     }
 
-    let path = path.unwrap().to_string_lossy().to_string();
 
     let pid = unsafe { libc::fork() };
     if pid == -1 {
@@ -206,16 +213,16 @@ fn execute(cmd: String, args: Vec<String>, background: bool) -> Option<i32> {
 
 // TODO have our own nix crate which handles execve and stuff
 // with rusty return types
-fn fork_child(cmd: String, args: Vec<String>) -> ! {
+fn fork_child(path: String, args: Vec<String>) -> ! {
     // This isn't exec(3) so we'll have to do PATHs ourselves
     let env = [ptr::null()];
 
     // Create a clone of args with cmd included as argv
-    let mut argv = vec![cmd.clone()];
+    let mut argv = vec![path.clone()];
     argv.append(&mut args.clone());
     let argv: Vec<CString> = argv.iter().map(|a| CString::new(a.as_str()).unwrap()).collect();
     
-    let cmd_cstr = CString::new(cmd.as_str()).unwrap();
+    let cmd_cstr = CString::new(path.as_str()).unwrap();
     let mut arg_ptrs: Vec<*const i8> = argv.iter().map(|f| f.as_ptr()).collect();
     arg_ptrs.push(ptr::null());
 
@@ -225,7 +232,7 @@ fn fork_child(cmd: String, args: Vec<String>) -> ! {
         env.as_ptr() as *const *const i8
     ) };
     if r == -1 {
-        println!("Failed to execute {cmd}: {}", io::Error::last_os_error());
+        println!("Failed to execute {path}: {}", io::Error::last_os_error());
         std::process::exit(
             io::Error::last_os_error().raw_os_error()
             .expect("Failed to get raw OS error")
