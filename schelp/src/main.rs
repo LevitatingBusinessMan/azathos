@@ -1,12 +1,15 @@
 #![feature(str_split_whitespace_remainder)]
 #![feature(lazy_cell)]
 use clap::Parser;
+use libc::{WIFEXITED, WIFSIGNALED, WEXITSTATUS, WTERMSIG};
 use signal::Signal;
 use std::collections::HashMap;
+use std::ffi::{CStr, CString};
 use std::io::{self, Write, Read};
+use std::mem::MaybeUninit;
+use std::ptr;
 use std::sync::{LazyLock, Mutex};
 use color::{green,red};
-use std::os::unix::process::*;
 
 static RC_FILENAME: &'static str = "schelprc";
 
@@ -27,7 +30,7 @@ struct Args {
 fn main() {
     let args = Args::parse();
     let stdin = io::stdin();
-    let mut status: Option<(bool, Option<i32>)> = None;
+    let mut status: Option<i32> = None;
     read_rc();
 
     let mut file = args.file.clone().map(|f| {
@@ -55,6 +58,7 @@ fn main() {
         }
         if let Some((cmd, args, background)) = parse(line.trim()) {
             status = execute(cmd, args, background);
+            save_status(status);
         }
     }
 }
@@ -63,17 +67,18 @@ fn read_rc() {
     if let Ok(schelprc) = std::fs::read_to_string(std::path::Path::new("/etc").join(RC_FILENAME)) {
         for line in schelprc.lines() {
             if let Some((cmd, args, background)) = parse(line.trim()) {
-                execute(cmd, args, background);
+                let status =  execute(cmd, args, background);
+                save_status(status);
             }
         }
     }
 }
 
-fn prompt(status: &Option<(bool, Option<i32>)>, args: &Args) {
+fn prompt(status: &Option<i32>, args: &Args) {
     let uid = unsafe { libc::getuid() };
     let mut prompt = if uid == 0 { args.root_prompt.clone() } else { args.user_prompt.clone() };
-    if let Some(status) = status {
-        match status.0 {
+    if let Some(code) = status {
+        match *code == 0 {
             true => prompt = green!(prompt),
             false => prompt = red!(prompt),
         }
@@ -157,66 +162,117 @@ fn save_status(code: Option<i32>) {
     }
 }
 
-/// Returns None if nothing was executed
-fn execute(cmd: String, args: Vec<String>, background: bool) -> Option<(bool, Option<i32>)> {
+fn execute(cmd: String, args: Vec<String>, background: bool) -> Option<i32> {
     // possibly execute as build_in
-    if let Some((suc, code)) = build_in(&cmd, &args) {
-        save_status(code);
-        return Some((suc, code))
+    if let Some(code) = build_in(&cmd, &args) {
+        return Some(code)
     }
 
     let mut command = std::process::Command::new(&cmd);
     let command = command.args(&args);
 
-    // TODO keep track of backgrounded task
+    // Libc is used here instead of Rusts Command and Child struct
+    // for better control. It also fits the projects philosophy better.
+
     if background {
-        match command.spawn() {
-            Ok(_child) => {
-                save_status(None);
-                None
-            },
-            Err(e) => {
-                save_status(None);
-                println!("{cmd}: {e}");
-                None
-            },
+        println!("Currently, background jobs have been disabled.");
+        save_status(None);
+        return None
+    }
+
+    let pid = unsafe { libc::fork() };
+    if pid == -1 {
+        panic!("Failed to fork!");
+    }
+
+    match pid {
+        0 => fork_child(cmd, args),
+        _ => fork_parent(pid, &cmd)
+    }
+}
+
+// TODO have our own nix crate which handles execve and stuff
+// with rusty return types
+fn fork_child(cmd: String, args: Vec<String>) -> ! {
+    // This isn't exec(3) so we'll have to do PATHs ourselves
+    let env = [ptr::null()];
+
+    // Create a clone of args with cmd included as argv
+    let mut argv = vec![cmd.clone()];
+    argv.append(&mut args.clone());
+    let argv: Vec<CString> = argv.iter().map(|a| CString::new(a.as_str()).unwrap()).collect();
+    
+    let cmd_cstr = CString::new(cmd.as_str()).unwrap();
+    let mut arg_ptrs: Vec<*const i8> = argv.iter().map(|f| f.as_ptr()).collect();
+    arg_ptrs.push(ptr::null());
+
+    let r: i32 = unsafe { libc::execve(
+        cmd_cstr.as_ptr(),
+        arg_ptrs.as_ptr() as *const *const i8,
+        env.as_ptr() as *const *const i8
+    ) };
+    if r == -1 {
+        println!("Failed to execute {cmd}: {}", io::Error::last_os_error());
+        std::process::exit(
+            io::Error::last_os_error().raw_os_error()
+            .expect("Failed to get raw OS error")
+        );
+    }
+    unreachable!();
+}
+
+fn fork_parent(pid: i32, cmd: &str) -> Option<i32> {
+    loop {
+        let mut wstatus = MaybeUninit::uninit();
+        // possibly use WUNTRACED as well, and notify the user if a process was stopped or continued
+        let r = unsafe { libc::waitpid(pid, wstatus.as_mut_ptr(), libc::WNOHANG) };
+        if r == 0 {
+            // Continue if nothing happened
+            continue;
         }
-    } else {
-        match command.status() {
-            Ok(status) => {
-                if let Some(signal) = status.signal() {
-                    match Signal::try_from(signal) {
-                        Ok(sigvar) => println!("{cmd}: Stopped with signal {:?}", sigvar),
-                        Err(_) => println!("{cmd}: Stopped with signal {:#x}", signal)
-                    }
+        if r == -1 {
+            panic!("Waitpid failed!");
+        }
+        let wstatus = unsafe { wstatus.assume_init() };
+        if WIFEXITED(wstatus) {
+            let status = WEXITSTATUS(wstatus);
+            match status {
+                0 => {
+                    return Some(0)
+                },
+                _ => {
+                    return Some(status);
                 }
-                save_status(status.code());
-                Some((status.success(), status.code()))
-            },
-            Err(e) => {
-                save_status(None);
-                println!("{cmd}: {e}");
-                None
-            },
+            }
+        } else if WIFSIGNALED(wstatus) {
+            let signal = WTERMSIG(wstatus);
+            match Signal::try_from(signal) {
+                Ok(sigvar) => println!("{cmd}: Terminated with signal {:?}", sigvar),
+                Err(_) => println!("{cmd}: Terminated with signal {:#x}", signal)
+            }
+            return  None;
         }
     }
 }
 
-fn build_in(cmd: &str, args: &[String]) -> Option<(bool, Option<i32>)> {
+
+// Returns a code on execution.
+// Return none on no execution.
+fn build_in(cmd: &str, args: &[String]) -> Option<i32> {
     match cmd {
         "clear" => {
             // https://en.wikipedia.org/wiki/ANSI_escape_code#CSI_(Control_Sequence_Introducer)_sequences
             print!("\x1b[2J"); //clear
             print!("\x1b[0;0H"); //cursor
-            Some((true, Some(0)))
+            Some(0)
         },
         "=" => {
             if args.len() < 2{
                 println!("Invalid use of =");
-                return Some((false, Some(1)))
+                return Some(1)
             } else {
                 std::env::set_var(&args[0], (&args[1..]).join(" ").to_string());
-                Some((true, Some(0)))
+                Some(0)
             }
         },
         "alias" => {
@@ -224,10 +280,10 @@ fn build_in(cmd: &str, args: &[String]) -> Option<(bool, Option<i32>)> {
                 for alias in ALIASES.lock().unwrap().iter() {
                     println!("{} = {}", alias.0, alias.1);
                 }
-                Some((true, Some(0)))
+                Some(0)
             } else {
                 ALIASES.lock().unwrap().insert(args[0].to_owned(), (&args[1..]).join(" ").to_string());
-                Some((true, Some(0)))
+                Some(0)
             }
         },
         "cd" => {
@@ -237,10 +293,10 @@ fn build_in(cmd: &str, args: &[String]) -> Option<(bool, Option<i32>)> {
                 args[0].clone()
             };
             match std::env::set_current_dir(target) {
-                Ok(_) => Some((true, Some(0))),
+                Ok(_) => Some(0),
                 Err(e) => {
                     println!("cd: {e}");
-                    return Some((false, Some(e.kind() as i32)))
+                    return Some(e.kind() as i32)
                 },
             }
         },
@@ -250,3 +306,36 @@ fn build_in(cmd: &str, args: &[String]) -> Option<(bool, Option<i32>)> {
         _ => None,
     }
 }
+
+// Old code using [Command] and [Child]
+// if background {
+//     match command.spawn() {
+//         Ok(_child) => {
+//             save_status(None);
+//             None
+//         },
+//         Err(e) => {
+//             save_status(None);
+//             println!("{cmd}: {e}");
+//             None
+//         },
+//     }
+// } else {
+//     match command.status() {
+//         Ok(status) => {
+//             if let Some(signal) = status.signal() {
+//                 match Signal::try_from(signal) {
+//                     Ok(sigvar) => println!("{cmd}: Stopped with signal {:?}", sigvar),
+//                     Err(_) => println!("{cmd}: Stopped with signal {:#x}", signal)
+//                 }
+//             }
+//             save_status(status.code());
+//             Some((status.success(), status.code()))
+//         },
+//         Err(e) => {
+//             save_status(None);
+//             println!("{cmd}: {e}");
+//             None
+//         },
+//     }
+// }
