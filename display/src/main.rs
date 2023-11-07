@@ -11,6 +11,8 @@ mod draw;
 
 mod cursor;
 
+mod ppf;
+
 #[derive(Parser)]
 struct Args {
 
@@ -31,6 +33,24 @@ struct Pixel {
     green: u8,
     red: u8,
     _alpha: u8,
+}
+
+impl Pixel {
+    const fn new(red: u8, green: u8, blue: u8) -> Self {
+        Self { _alpha: 0x00, red, green, blue }
+    }
+    /// Blend with another pixel
+    pub fn blend(&self, px: Pixel) -> Pixel {
+        if px._alpha == 0xff { return *self }
+        if px._alpha == 0x00 { return px }
+        unreachable!()
+        // let mut s = *self;
+        // let factor = (0xff - px._alpha) as f64 / 255 as f64;
+        // s.red = self.red.saturating_add((px.red as f64 * factor) as u8);
+        // s.green = self.green.saturating_add((px.green as f64 * factor) as u8);
+        // s.blue = self.blue.saturating_add((px.blue as f64 * factor) as u8);
+        // s
+    }
 }
 
 type FrameBuffer = [Pixel];
@@ -144,7 +164,8 @@ fn main() {
         // arena.push(Rc::new(RefCell::new(window::create_root(&v_info))));
         // arena.push(Rc::new(RefCell::new(Window::create(100, 100, 100, 100))));
 
-        //fs::OpenOptions::new().write(true).open("/sys/class/vtconsole/vtcon0/bind").unwrap().write_all(b"0").unwrap();
+        fs::OpenOptions::new().write(true).open("/sys/class/graphics/fbcon/cursor_blink").unwrap().write_all(b"0").unwrap();
+        fs::OpenOptions::new().write(true).open("/sys/class/vtconsole/vtcon0/bind").unwrap().write_all(b"0").unwrap();
 
         let mut root = window::create_root(&v_info);
         let mut win = Window::create(100, 100, 100, 100);
@@ -156,11 +177,9 @@ fn main() {
 
         let (tx, rx) = sync::mpsc::channel();
 
-        let mut cursor = Window::create(10, 10, 0, 0);
-        cursor.decorated = false;
-        draw::fill(&mut cursor.bitmap, Pixel::new(0x59 , 0x95, 0x9e));
+        let mut cursor = cursor::cursor();
 
-        cursor.map(&mut fb_bitmap);
+        cursor.map_alpha(&mut fb_bitmap);
 
         thread::Builder::new().name("Render thread".to_string()).spawn(move || {
             loop {
@@ -169,7 +188,7 @@ fn main() {
                 cursor.unmap(&mut fb_bitmap);
                 cursor.x = x;
                 cursor.y = y;
-                cursor.map(&mut fb_bitmap);
+                cursor.map_alpha(&mut fb_bitmap);
                 RENDERING_CURSOR.store(false, sync::atomic::Ordering::Relaxed);
             }
         }).unwrap();
@@ -236,10 +255,4 @@ unsafe fn create_socket() -> i32 {
         println!("Failed to bind socket: {}", io::Error::last_os_error())
     }
     return sfd;
-}
-
-impl Pixel {
-    const fn new(red: u8, green: u8, blue: u8) -> Self {
-        Self { _alpha: 0x00, red, green, blue }
-    }
 }

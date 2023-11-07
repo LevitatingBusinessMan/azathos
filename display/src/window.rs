@@ -7,9 +7,9 @@ type WindowId = NodeId;
 
 pub struct Window {
 	pub id: u64,
-	/// X coordinate, of the underlying bitmap
+	/// Absolute X coordinate, regardless of decorations
 	pub x: u32,
-	/// Y coordinate, of the underlying bitmap
+	/// Absolute Y coordinate, regardless of decorations
 	pub y: u32,
 	pub decorated: bool,
 	/// The bitmap of the window
@@ -37,15 +37,62 @@ impl Window {
 			backing: None
 		}
 	}
+
+   /// x coordinate of internal bitmap
+   /// (thus excluding the decoration).
+   pub fn ix(&self) -> u32 {
+	if self.decorated {
+		self.x + FRAME_BORDER
+	} else {
+		self.x
+	}
+   }
+
+	/// y coordinate of internal bitmap
+   /// (thus excluding the decoration).
+   pub fn iy(&self) -> u32 {
+		if self.decorated {
+			self.y + FRAME_TOP
+		} else {
+			self.y
+		}
+   }
+
+   /// Total width, including decorations.
+   pub fn twidth(&self) -> u32 {
+		if self.decorated {
+			self.bitmap.width + FRAME_BORDER * 2
+		} else {
+			self.bitmap.width
+		}
+   }
+
+   /// Total height, including decorations.
+   pub fn theight(&self) -> u32 {
+	if self.decorated {
+		self.bitmap.height + FRAME_BORDER + FRAME_TOP
+	} else {
+		self.bitmap.height
+	}
+   }
+
+   	/// Map this onto the framebuffer (or another bitmap...)
 	pub fn map(&mut self, fb: &mut BitMap) {
 		if self.backing.is_none() {
-			self.backing = if self.decorated {
-				Some(draw::get_rect(fb, self.x - FRAME_BORDER, self.y - FRAME_TOP, self.bitmap.width + FRAME_BORDER * 2, self.bitmap.height + FRAME_TOP + FRAME_BORDER))
-			} else {
-				Some(draw::get_rect(fb, self.x, self.y, self.bitmap.width, self.bitmap.height))
-			}
+			self.backing = Some(draw::get_rect(fb, self.x, self.y, self.twidth(), self.theight()))
 		}
-		draw::map(&self.bitmap, fb, self.x, self.y);
+		draw::map(&self.bitmap, fb, self.ix(), self.iy());
+		if self.decorated {
+			self.decorate(fb);
+		}
+	}
+
+	/// A copy of [Window::map] but with pixel blending
+	pub fn map_alpha(&mut self, fb: &mut BitMap) {
+		if self.backing.is_none() {
+			self.backing = Some(draw::get_rect(fb, self.x, self.y, self.twidth(), self.theight()))
+		}
+		draw::map_alpha(&self.bitmap, fb, self.ix(), self.iy());
 		if self.decorated {
 			self.decorate(fb);
 		}
@@ -53,11 +100,7 @@ impl Window {
 
 	pub fn unmap(&mut self, fb: &mut BitMap) {
 		if let Some(backing) = &self.backing {
-			if self.decorated {
-				draw::map(&backing, fb, self.x - FRAME_BORDER, self.y - FRAME_TOP);
-			} else {
-				draw::map(&backing, fb, self.x, self.y);
-			}
+			draw::map(&backing, fb, self.x, self.y);
 			self.backing = None;
 		}
 	}
@@ -65,20 +108,20 @@ impl Window {
 	pub fn decorate(&self, fb: &mut BitMap) {
 		// border
 		draw::draw_rect_stroke(
-			self.bitmap.width + 2 * FRAME_BORDER,
-			self.bitmap.height + FRAME_BORDER + FRAME_TOP,
-			self.x - FRAME_BORDER,
-			self.y - FRAME_TOP,
+			self.twidth(),
+			self.theight(),
+			self.x,
+			self.y,
 			Pixel::new(0xff, 0x00, 0x00),
 			FRAME_BORDER,
 			fb
 		);
 		// top
 		draw::draw_rect(
-			self.bitmap.width + 2 * FRAME_BORDER,
+			self.twidth(),
 			FRAME_TOP,
-			self.x - FRAME_BORDER,
-			self.y - FRAME_TOP,
+			self.x,
+			self.y,
 			Pixel::new(0xff, 0x00, 0x00),
 			fb,
 		);

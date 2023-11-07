@@ -28,6 +28,22 @@ pub(crate) fn map(from: &BitMap, to: &mut BitMap, x: u32, y: u32) {
 	}
 }
 
+/// Map a bitmap onto another with transparency
+pub(crate) fn map_alpha(from: &BitMap, to: &mut BitMap, x: u32, y: u32) {
+	let mut i = (y * to.width + x) as usize;
+	for sy in 0..from.height {
+		for sx in 0..from.width {
+			let px = from.pxs[(sy * from.width + sx) as usize];
+			if px._alpha != 0xff {
+				to.pxs[i] = px;
+			}
+			//to.pxs[i] = to.pxs[i].blend(from.pxs[(sy * from.width + sx) as usize]);
+			i += 1;
+		}
+		i += (to.width - from.width) as usize;
+	}
+}
+
 /// Fill a bitmap with a singular color
 pub(crate) fn fill(b: &mut BitMap, px: Pixel) {
 	for x in 0..b.height {
