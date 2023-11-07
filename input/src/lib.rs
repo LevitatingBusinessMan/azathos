@@ -1,7 +1,9 @@
 #![feature(read_buf)]
 //! For handling evdev input devices
 
+use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::fmt::format;
 use std::fs;
 use std::io;
 use std::io::ErrorKind;
@@ -14,6 +16,7 @@ use std::io::Read;
 use std::ptr;
 use std::ptr::addr_of;
 use std::ptr::addr_of_mut;
+use std::str::FromStr;
 use libc::FD_ISSET;
 use libc::FD_SET;
 use libc::FD_ZERO;
@@ -23,10 +26,13 @@ use ioctl_macro::_IOR;
 use libc::select;
 use libc::timeval;
 
+/// https://github.com/torvalds/linux/blob/02de58b24d2e1b2cf947d57205bd2221d897193c/include/linux/input.h#L45-L130
+/// As read from `/proc/bus/input/devices`
 #[derive(Debug)]
 pub struct Device {
     pub name: String,
-    pub handlers: Vec<String>
+    pub handlers: Vec<String>,
+    pub bitmaps: HashMap<String, Vec<u64>>,
 }
 
 
@@ -215,6 +221,7 @@ impl Mouse {
         self.y = y;
     }
 
+    // TODO this doesn't work right because the mouse should really at least have a reference to its name
     /// Create a [Mouse] knowing the evdev file.
     pub fn from_evdev<S: AsRef<OsStr> + ?Sized>(evdev: &S) -> io::Result<Self> {
         let file = fs::File::open(Path::new("/dev/input").join(Path::new(&evdev)))?;
@@ -236,7 +243,18 @@ pub fn get_abs(fd: RawFd, axis: u8) -> input_absinfo {
 /// Returns [ErrorKind::Other] if no mouse is found.
 pub fn mouse() -> io::Result<Mouse> {
     let list = list()?;
-    let dev = list.iter().find(|d| d.name.contains("Mouse")).ok_or(
+    // For now it is enough knowing that the device has REL inputs and no ABS inputs. Then it is most likely the mouse.
+    // Udev also checks for the mouse button:
+    // https://github.com/systemd/systemd/blob/e592bf5d11b9d41f77cc72a05c447ea34b787a9e/src/udev/udev-builtin-input_id.c#L266-L270
+    let dev = list.iter().find(|d|
+        // Does have relative axis
+        d.bitmaps.contains_key("REL")
+        // Does not have absolute axis
+        && !d.bitmaps.contains_key("ABS")
+        // Contains a mouse button
+        // FIXME
+        //&& d.bitmaps.get("EV").unwrap_or(&vec![0]).iter().any(|k| k & BTN_MOUSE as u64 > 0) 
+    ).ok_or(
         io::Error::new(ErrorKind::NotFound, "Mouse not found")
     )?;
     let handler = dev.handlers.iter().find(|h| h.starts_with("event")).ok_or(
@@ -246,6 +264,7 @@ pub fn mouse() -> io::Result<Mouse> {
 }
 
 /// Lists devices found in /proc/bus/input/devices
+/// https://github.com/torvalds/linux/blob/02de58b24d2e1b2cf947d57205bd2221d897193c/include/linux/input.h#L45
 pub fn list() -> io::Result<Vec<Device>> {
     let devices_str = fs::read_to_string("/proc/bus/input/devices")?;
     let mut devices = vec![];
@@ -254,17 +273,51 @@ pub fn list() -> io::Result<Vec<Device>> {
         if dev.trim().is_empty() {
             continue;
         }
+
+        let error = |s| io::Error::other(format!("Parsing failure on {}", s));
+
         let mut name = String::new();
         let mut handlers = vec![];
+        let mut bitmaps: HashMap<String, Vec<u64>> = HashMap::new();
+
+        // https://unix.stackexchange.com/questions/74903/explain-ev-in-proc-bus-input-devices-data
+        // https://github.com/torvalds/linux/blob/02de58b24d2e1b2cf947d57205bd2221d897193c/include/linux/input.h#L45
         for line in dev.lines() {
             if line.starts_with("N") {
-                name = line["N: Name=\"".len()..line.len()-1].to_owned()
+                name = line
+                .strip_prefix("N: Name=\"")
+                .ok_or(error("Name"))?
+                .strip_suffix("\"")
+                .ok_or(error("Name"))?
+                .trim().to_owned();
             }
             if line.starts_with("H") {
-                handlers = line["N: Handlers=".len()..line.len()].to_owned().trim().split_ascii_whitespace().into_iter().map(|s| s.to_owned()).collect();
+                handlers = line
+                .strip_prefix("H: Handlers=")
+                .ok_or(error("Handlers"))?
+                .to_owned().trim()
+                .split_ascii_whitespace().into_iter().map(|s| s.to_owned()).collect();
+            }
+
+            if line.starts_with("B") {
+                let (name, values) = line
+                .strip_prefix("B: ")
+                .ok_or(error("Bitmap"))?
+                .trim()
+                .split_once('=')
+                .ok_or(error("Bitmap"))?;
+                let values: Vec<_> = values.split_ascii_whitespace()
+                .map(|v| u64::from_str_radix(v, 16)).collect();
+                if values.iter().any(|v| v.is_err()) {
+                    return Err(error("Bitmap"));
+                } else {
+                    let values = values.iter().map(|v| v.clone().unwrap()).collect();
+                    bitmaps.insert(name.to_owned(), values);
+                }
+                
             }
         }
-        devices.push(Device { name, handlers })
+        devices.push(Device { name, handlers, bitmaps })
     }
 
     Ok(devices)
