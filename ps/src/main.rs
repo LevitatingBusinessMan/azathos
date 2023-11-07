@@ -24,9 +24,10 @@ fn main() -> io::Result<()> {
             if args.state {
                 print!(" {}", status.state);
             }
-            match args.cmdline {
-                true => print!(" {}", cmdline),
-                false => print!(" {}", status.name),
+            if args.cmdline && !cmdline.is_empty() {
+                print!(" {}", cmdline);
+            } else {
+                print!(" {}", status.name);
             }
             println!()
         }
