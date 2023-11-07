@@ -139,6 +139,8 @@ impl Mouse {
                     BTN_MIDDLE => Some(MouseEvent::Middle(val)),
                     BTN_FORWARD => Some(MouseEvent::Forward(val)),
                     BTN_BACK => Some(MouseEvent::Back(val)),
+                    BTN_SIDE => Some(MouseEvent::Side(val)),
+                    BTN_EXTRA => Some(MouseEvent::Extra(val)),
                     _ => {
                         eprintln!("Unimplented mouse event code: {:#x}", events[0].code);
                         None  
@@ -239,12 +241,11 @@ pub fn get_abs(fd: RawFd, axis: u8) -> input_absinfo {
 }
 
 /// Search for a mouse device and return it.
-/// It simply searches for a device with name "Mouse"
 /// Returns [ErrorKind::Other] if no mouse is found.
 pub fn mouse() -> io::Result<Mouse> {
     let list = list()?;
-    // For now it is enough knowing that the device has REL inputs and no ABS inputs. Then it is most likely the mouse.
-    // Udev also checks for the mouse button:
+    // Detect the mouse by finding a mouse with REL axes, no ABS axes and a mouse button.
+    // As inspired by udev:
     // https://github.com/systemd/systemd/blob/e592bf5d11b9d41f77cc72a05c447ea34b787a9e/src/udev/udev-builtin-input_id.c#L266-L270
     let dev = list.iter().find(|d|
         // Does have relative axis
@@ -252,8 +253,9 @@ pub fn mouse() -> io::Result<Mouse> {
         // Does not have absolute axis
         && !d.bitmaps.contains_key("ABS")
         // Contains a mouse button
-        // FIXME
-        //&& d.bitmaps.get("EV").unwrap_or(&vec![0]).iter().any(|k| k & BTN_MOUSE as u64 > 0) 
+        // Using these kernel compatible macros:
+        // https://github.com/systemd/systemd/blob/e592bf5d11b9d41f77cc72a05c447ea34b787a9e/src/udev/udev-builtin-input_id.c#L23-L29
+        && d.bitmaps.get("KEY").unwrap_or(&vec![0]).iter().any(|k| (k >> (BTN_MOUSE % 64)) & 1 > 0) 
     ).ok_or(
         io::Error::new(ErrorKind::NotFound, "Mouse not found")
     )?;
