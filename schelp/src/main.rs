@@ -135,7 +135,7 @@ fn parse(line: &str) -> Option<(String, Vec<String>, bool)> {
                         if let Ok(val) = env::var(&current_arg[1..]) {
                             current_arg = val
                         } else {
-                            println!("Variable {} not found", current_arg);
+                            eprintln!("schelp: Variable {} not found", current_arg);
                             return None
                         }
                     }
@@ -286,9 +286,9 @@ fn build_in(cmd: &str, args: &[String]) -> Option<i32> {
             print!("\x1b[0;0H"); //cursor
             Some(0)
         },
-        "=" => {
+        "set" => {
             if args.len() < 2{
-                println!("Invalid use of =");
+                eprintln!("Invalid use of set");
                 return Some(1)
             } else {
                 std::env::set_var(&args[0], (&args[1..]).join(" ").to_string());
@@ -315,7 +315,7 @@ fn build_in(cmd: &str, args: &[String]) -> Option<i32> {
             match std::env::set_current_dir(target) {
                 Ok(_) => Some(0),
                 Err(e) => {
-                    println!("cd: {e}");
+                    eprintln!("cd: {e}");
                     return Some(e.kind() as i32)
                 },
             }
@@ -338,7 +338,7 @@ fn path_search(path: &str, cmd: &str) -> Option<PathBuf> {
                     }
                 }
             },
-            Err(e) => eprintln!("Failed to open {dir} as found in  $PATH: {e}")
+            Err(e) => eprintln!("schelp: Failed to open {dir} as found in  $PATH: {e}")
         }
     }
     return None;
