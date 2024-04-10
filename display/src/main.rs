@@ -183,11 +183,17 @@ fn main() {
 
         thread::Builder::new().name("Render thread".to_string()).spawn(move || {
             loop {
+                // the actual rendered thread should drop multiple requests
+                // to map the same bitmap (only render the last)
                 let (x, y) = rx.recv().unwrap();
                 RENDERING_CURSOR.store(true, sync::atomic::Ordering::Relaxed);
                 cursor.unmap(&mut fb_bitmap);
+                win.unmap(&mut fb_bitmap);
+                win.x = x;
+                win.y = y;
                 cursor.x = x;
                 cursor.y = y;
+                win.map(&mut fb_bitmap);
                 cursor.map_alpha(&mut fb_bitmap);
                 RENDERING_CURSOR.store(false, sync::atomic::Ordering::Relaxed);
             }

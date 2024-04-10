@@ -2,6 +2,7 @@
 
 use crate::{FrameBuffer, Pixel, BitMap};
 
+/// Clone a rectangle from a bitmap
 pub(crate) fn get_rect(from: &mut BitMap, x: u32, y: u32, width: u32, height: u32) -> BitMap {
 	let mut pxs: Vec<Pixel> = Vec::with_capacity((from.height * from.width) as usize);
 	for sy in 0..height {
