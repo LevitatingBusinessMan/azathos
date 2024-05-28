@@ -27,6 +27,11 @@ run:
 	qemu-system-x86_64 $(QEMU_FLAGS) -nographic -append "console=ttyS0 loglevel=6"
 
 view:
+	# enabling kvm gives some issues when trying to use vga
+	# vga can be enabled but the console doesn't open in it correctly
+	# instead you can open the console in serial
+	# qemu-system-x86_64 $(QEMU_FLAGS) -vga virtio -append "console=ttyS0 loglevel=6" -enable-kvm
+
 	qemu-system-x86_64 $(QEMU_FLAGS) -vga virtio -append "loglevel=6"
 
 debug:
