@@ -256,21 +256,14 @@ fn fork_parent(pid: i32, cmd: &str) -> Option<i32> {
         let wstatus = unsafe { wstatus.assume_init() };
         if WIFEXITED(wstatus) {
             let status = WEXITSTATUS(wstatus);
-            match status {
-                0 => {
-                    return Some(0)
-                },
-                _ => {
-                    return Some(status);
-                }
-            }
+            return Some(status);
         } else if WIFSIGNALED(wstatus) {
             let signal = WTERMSIG(wstatus);
             match Signal::try_from(signal) {
                 Ok(sigvar) => println!("{cmd}: Terminated with signal {:?}", sigvar),
                 Err(_) => println!("{cmd}: Terminated with signal {:#x}", signal)
             }
-            return  None;
+            return None;
         }
     }
 }
