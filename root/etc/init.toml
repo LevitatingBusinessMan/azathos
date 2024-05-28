@@ -8,7 +8,7 @@ mounts = [
 
 # Login information
 [login]
-shell = "schelp"
+shell = "/bin/schelp"
 home = "/home"
 user = "root"
 cwd = "/"

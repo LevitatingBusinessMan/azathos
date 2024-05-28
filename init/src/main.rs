@@ -49,7 +49,7 @@ macro_rules! log {
     }};
 }
 
-static  DEFAULT_PATH: &'static str = "/bin";
+static  DEFAULT_PATH: &'static str = "/bin /guest/bin";
 
 fn main() {
     println!("Init started");
