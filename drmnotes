@@ -1,0 +1,5 @@
+fbdev has been deprecated, use drm instead?
+https://www.kernel.org/doc/html/latest/gpu/index.html
+https://www.kernel.org/doc/html/latest/gpu/drm-kms-helpers.html#framebuffer-dma-helper-functions-reference
+https://man.archlinux.org/man/drm-memory.7.en
+https://github.com/magcius/drmdemo
