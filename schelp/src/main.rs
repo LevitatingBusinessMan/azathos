@@ -164,8 +164,8 @@ fn parse(line: &str) -> Option<(String, Vec<String>, bool)> {
 // either set or unset the status variable
 fn save_status(code: Option<i32>) {
     match code {
-        Some(code) => std::env::set_var("status", code.to_string()),
-        None => std::env::remove_var("status")
+        Some(code) => unsafe { std::env::set_var("status", code.to_string()) },
+        None => unsafe { std::env::remove_var("status") }
     }
 }
 
@@ -284,7 +284,7 @@ fn build_in(cmd: &str, args: &[String]) -> Option<i32> {
                 println!("Invalid use of =");
                 return Some(1)
             } else {
-                std::env::set_var(&args[0], (&args[1..]).join(" ").to_string());
+                unsafe { std::env::set_var(&args[0], (&args[1..]).join(" ").to_string()) };
                 Some(0)
             }
         },
