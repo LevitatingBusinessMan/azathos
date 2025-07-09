@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${{ matrix.toolchain }} --target x86_64-unknown-linux-musl
+         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${{matrix.toolchain}} --target x86_64-unknown-linux-musl
          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - run: cargo build
-      - run: cargo test
+      - run: cargo +${{matrix.toolchain}} build
+      - run: cargo +${{matrix.toolchain}} test
