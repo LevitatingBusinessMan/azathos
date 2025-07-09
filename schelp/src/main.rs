@@ -186,7 +186,7 @@ fn execute(cmd: String, args: Vec<String>, background: bool) -> Option<i32> {
 
     // Either use the cmd as a path, or find a path
     let path;
-    if let Ok(true) = fs::try_exists(Path::new(&cmd)) {
+    if let Ok(true) = Path::new(&cmd).try_exists() {
         path = cmd.clone();
     } else {
         let path_to_use = env::var("PATH").unwrap_or("".to_string()); //+ " .";
