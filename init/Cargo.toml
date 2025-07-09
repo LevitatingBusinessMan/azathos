@@ -6,6 +6,6 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.75"
 libc = "0.2.149"
-serde = { version = "1.0.190", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
 toml = "0.8.6"
 color ={ path = "../color"}
