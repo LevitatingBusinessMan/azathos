@@ -23,6 +23,9 @@ directory:
 build:
 	cargo build
 
+nspawn:
+	sudo systemd-nspawn -D rootfs /init --link-journal=no
+
 run:
 	qemu-system-x86_64 $(QEMU_FLAGS) -nographic -append "console=ttyS0 loglevel=6"
 
