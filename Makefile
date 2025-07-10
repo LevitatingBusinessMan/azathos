@@ -1,10 +1,15 @@
 QEMU_FLAGS ?= -kernel linux -initrd rootfs.cpio.zst -m 1024
 
-cpio: install
+default: build
+
+cpio: rootfs
 	cd rootfs; find | cpio --quiet -H newc -o | zstd > ../rootfs.cpio.zst
 
-install: build directory
-	install target/x86_64-unknown-linux-musl/debug/init rootfs
+tar: rootfs
+	tar -cJf azathos.tar.xz -C rootfs .
+
+rootfs: directory
+	install target/x86_64-unknown-linux-musl/debug/init rootfs/sbin
 	install target/x86_64-unknown-linux-musl/debug/schelp rootfs/bin
 	install target/x86_64-unknown-linux-musl/debug/id rootfs/bin
 	install target/x86_64-unknown-linux-musl/debug/ls rootfs/bin

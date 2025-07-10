@@ -5,13 +5,24 @@ My goal is to create a usable UNIX environment with my own init, shell and utili
 
 All code is written in Rust and limited to just a few common libraries like libc, chrono, clap and serde.
 
-## Building
-```SHELL
-make
-make run
+# Boot using systemd containers
+```
+make && make rootfs
+sudo systemd-nspawn -D rootfs -b
 ```
 
-# Intramfs
+It should be noted that systemd-nspawn can alter the permissions on the directory.
+
+Alternatively, you can import the image.
+```
+make && make tar
+importctl import-tar azathos.tar.xz --class=machine
+sudo systemd-nspawn -M azathos -b
+```
+
+However, because there is no system bus in AzathOS machinectl is limited.
+
+# Intramfs (old method)
 Currently AzathOS works by creating a tiny filesystem in a cpio archive.
 This is then used as the initramfs for the kernel supplied with `-initrd` flag in qemu.
 The kernel will then decompress my filesystem on top of the initramfs already baked into the kernel.
